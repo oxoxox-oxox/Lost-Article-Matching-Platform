@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Chat</title>
+    <!-- 引入marked.js库用于markdown解析 -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .chat-container {
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            height: 400px;
+            overflow-y: scroll;
+        }
+        .message {
+            margin-bottom: 10px;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        .user-message {
+            background-color: #e3f2fd;
+            align-self: flex-end;
+        }
+        .ai-message {
+            background-color: #f5f5f5;
+            align-self: flex-start;
+        }
+        .input-container {
+            display: flex;
+            gap: 10px;
+        }
+        input {
+            flex: 1;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        button {
+            padding: 10px 20px;
+            background-color: #2196f3;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #1976d2;
+        }
+        /* 为markdown内容添加样式 */
+        .markdown-content {
+            line-height: 1.6;
+        }
+        .markdown-content h1, .markdown-content h2, .markdown-content h3 {
+            margin-top: 16px;
+            margin-bottom: 8px;
+        }
+        .markdown-content p {
+            margin-bottom: 8px;
+        }
+        .markdown-content ul, .markdown-content ol {
+            margin-bottom: 8px;
+            padding-left: 20px;
+        }
+        .markdown-content code {
+            background-color: #f0f0f0;
+            padding: 2px 4px;
+            border-radius: 3px;
+            font-family: monospace;
+        }
+        .markdown-content pre {
+            background-color: #f0f0f0;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+        .markdown-content pre code {
+            background-color: transparent;
+            padding: 0;
+        }
+        .markdown-content blockquote {
+            border-left: 4px solid #2196f3;
+            padding-left: 10px;
+            margin-left: 0;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <h1>AI Chat</h1>
+    <div class="chat-container" id="chat-container"></div>
+    <div class="settings-container" style="margin-bottom: 10px;">
+        <label style="display: flex; align-items: center; gap: 10px;">
+            <input type="checkbox" id="reasoning-toggle">
+            <span>开启推理模式</span>
+        </label>
+    </div>
+    <div class="input-container">
+        <input type="text" id="user-input" placeholder="Enter your question...">
+        <button id="send-btn">Send</button>
+    </div>
+
+    <script>
+        const chatContainer = document.getElementById('chat-container');
+        const userInput = document.getElementById('user-input');
+        const sendBtn = document.getElementById('send-btn');
+        const reasoningToggle = document.getElementById('reasoning-toggle');
+        let history = [];
+
+        function addMessage(content, isUser) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${isUser ? 'user-message' : 'ai-message'}`;
+            
+            if (isUser) {
+                // 用户消息直接显示文本
+                messageDiv.textContent = content;
+            } else {
+                // AI消息使用markdown解析
+                const markdownDiv = document.createElement('div');
+                markdownDiv.className = 'markdown-content';
+                markdownDiv.innerHTML = marked.parse(content);
+                messageDiv.appendChild(markdownDiv);
+            }
+            
+            chatContainer.appendChild(messageDiv);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+
+        async function sendMessage() {
+            const question = userInput.value.trim();
+            if (!question) return;
+
+            // Add user message to chat
+            addMessage(question, true);
+            userInput.value = '';
+
+            // Add to history
+            history.push({ role: 'user', content: question });
+
+            // Send request to AI API
+            try {
+                const response = await fetch('/ai/chat', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        user_question: question,
+                        history: history,
+                        use_reasoning: reasoningToggle.checked
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error('API request failed');
+                }
+
+                // Handle streaming response
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let aiResponse = '';
+                let aiMessageDiv = document.createElement('div');
+                aiMessageDiv.className = 'message ai-message';
+                const markdownDiv = document.createElement('div');
+                markdownDiv.className = 'markdown-content';
+                aiMessageDiv.appendChild(markdownDiv);
+                chatContainer.appendChild(aiMessageDiv);
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    
+                    const chunk = decoder.decode(value, { stream: true });
+                    aiResponse += chunk;
+                    // 实时解析markdown
+                    markdownDiv.innerHTML = marked.parse(aiResponse);
+                    chatContainer.scrollTop = chatContainer.scrollHeight;
+                }
+
+                // Add AI response to history
+                history.push({ role: 'assistant', content: aiResponse });
+
+            } catch (error) {
+                console.error('Error:', error);
+                addMessage('Error: ' + error.message, false);
+            }
+        }
+
+        sendBtn.addEventListener('click', sendMessage);
+        userInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        });
+    </script>
+</body>
+</html>

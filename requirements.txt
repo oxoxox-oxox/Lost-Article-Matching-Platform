@@ -1,4 +1,15 @@
 fastapi
+uvicorn
+sqlalchemy
 pymysql
+passlib[bcrypt]
+python-jose[cryptography]
+python-dotenv
+pydantic
+pydantic-settings
+email-validator
 jinja2
+python-multipart
 openai
+zhipuai
+numpy
