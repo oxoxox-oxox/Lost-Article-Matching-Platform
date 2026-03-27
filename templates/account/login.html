@@ -1,0 +1,98 @@
+{% extends "index.html" %}
+
+{% block title %}Login{% endblock %}
+
+{% block content %}
+<div class="card" onload="checkToken()">
+    <div class="card-header">
+        <h2>Login</h2>
+    </div>
+    <div class="card-body">
+        <form id="loginForm">
+            <div class="form-group">
+                <label for="username_or_email">Username/Email</label>
+                <input type="text" id="username_or_email" name="username_or_email" required placeholder="Username or Email">
+            </div>
+            <div class="form-group">
+                <label for="password">Password</label>
+                <input type="password" id="password" name="password" required placeholder="Password">
+            </div>
+            <div class="form-group">
+                <a href="#" class="forgot-password">Forgot Password？</a>
+            </div>
+            <button type="submit" class="btn btn-primary">Login</button>
+        </form>
+    </div>
+    <div class="card-footer">
+        <p>Do not have an account? <a href="/account/register">Register</a></p>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // 检查缓存中的token是否有效
+    async function checkToken() {
+        const token = localStorage.getItem('token');
+        if (token) {
+            try {
+                const response = await fetch('/auth/me', {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+                
+                if (response.ok) {
+                    // token有效，自动跳转到账户页面
+                    window.location.href = '/account/profile';
+                }
+                // token无效，不执行任何操作
+            } catch (error) {
+                // 发生错误，不执行任何操作
+            }
+        }
+    }
+    
+    // 立即检查token，早于页面加载
+    checkToken();
+    
+    document.addEventListener('DOMContentLoaded', function() {
+        document.getElementById('loginForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const formData = {
+                username_or_email: document.getElementById('username_or_email').value,
+                password: document.getElementById('password').value
+            };
+            
+            try {
+                const response = await fetch('/auth/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        username_or_email: formData.username_or_email,
+                        password: formData.password
+                    })
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    // 保存token
+                    localStorage.setItem('token', data.access_token);
+                    // 跳转到个人资料页面
+                    window.location.href = '/account/profile';
+                } else {
+                    const error = await response.json();
+                    msg(error.detail || 'Login failed',"error");
+                }
+            } catch (error) {
+                console.error('Login failed:', error);
+                msg('Login failed, please try again later',"error");
+            }
+        });
+    });
+</script>
+{% endblock %}

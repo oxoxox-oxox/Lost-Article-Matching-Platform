@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Lamp{% endblock %}</title>
+    <link rel="icon" href="/static/favicon.ico" type="image/x-icon">
+    <link rel="stylesheet" href="/static/css/style.css?v=1.0.1">
+    {% block head %}{% endblock %}
+</head>
+<body>
+    <header>
+        <nav>
+            <div class="logo">Lost Article Matching Platform</div>
+            <ul>
+                <li><a href="/">Home</a></li>
+                <li><a href="/ai/chat">Search</a></li>
+                <li><a href="#">Report</a></li>
+                <li><a href="/account">Profile</a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        <div class="container">
+            {% block content %}
+            <div class="hero">
+                <h1>Welcome to Lost Article Matching Platform</h1>
+                <p class="subtitle">Find lost articles quickly and easily</p>
+                <div class="hero-buttons">
+                    <a href="/search" class="btn btn-primary">Search</a>
+                    <a href="/report" class="btn btn-secondary">Report</a>
+                </div>
+            </div>
+            <div class="features">
+                <div class="feature">
+                    <h3>安全认证</h3>
+                    <p>使用 JWT 令牌进行安全认证，保护用户数据</p>
+                </div>
+                <div class="feature">
+                    <h3>防机器人</h3>
+                    <p>内置蜜罐和速率限制，有效防止恶意攻击</p>
+                </div>
+                <div class="feature">
+                    <h3>用户管理</h3>
+                    <p>完整的用户注册、登录和个人资料管理功能</p>
+                </div>
+            </div>
+            {% endblock %}
+        </div>
+    </main>
+    <footer>
+        <p>&copy; 2026 Lost Article Matching Platform</p>
+    </footer>
+    <script src="/static/js/main.js"></script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>
