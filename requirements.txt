@@ -1,0 +1,4 @@
+fastapi
+pymysql
+jinja2
+openai
