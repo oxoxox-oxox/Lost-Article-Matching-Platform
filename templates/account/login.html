@@ -10,8 +10,8 @@
     <div class="card-body">
         <form id="loginForm">
             <div class="form-group">
-                <label for="username_or_email">Username/Email</label>
-                <input type="text" id="username_or_email" name="username_or_email" required placeholder="Username or Email">
+                <label for="username_or_email">Email</label>
+                <input type="email" id="username_or_email" name="username_or_email" required placeholder="Email">
             </div>
             <div class="form-group">
                 <label for="password">Password</label>
@@ -42,7 +42,7 @@
                         'Authorization': `Bearer ${token}`
                     }
                 });
-                
+
                 if (response.ok) {
                     // Token is valid, redirect to profile page
                     window.location.href = '/account/profile';
@@ -53,19 +53,24 @@
             }
         }
     }
-    
+
     // Check token immediately, before full page load
     checkToken();
-    
-    document.addEventListener('DOMContentLoaded', function() {
-        document.getElementById('loginForm').addEventListener('submit', async function(e) {
+
+    document.addEventListener('DOMContentLoaded', function () {
+        document.getElementById('loginForm').addEventListener('submit', async function (e) {
             e.preventDefault();
-            
+
             const formData = {
-                username_or_email: document.getElementById('username_or_email').value,
+                username_or_email: document.getElementById('username_or_email').value.trim(),
                 password: document.getElementById('password').value
             };
-            
+
+            if (!formData.username_or_email.includes('@')) {
+                msg('Email login only.', "error");
+                return;
+            }
+
             try {
                 const response = await fetch('/auth/login', {
                     method: 'POST',
@@ -77,7 +82,7 @@
                         password: formData.password
                     })
                 });
-                
+
                 if (response.ok) {
                     const data = await response.json();
                     // Save token
@@ -86,11 +91,11 @@
                     window.location.href = '/account/profile';
                 } else {
                     const error = await response.json();
-                    msg(error.detail || 'Login failed',"error");
+                    msg(error.detail || 'Login failed', "error");
                 }
             } catch (error) {
                 console.error('Login failed:', error);
-                msg('Login failed, please try again later',"error");
+                msg('Login failed, please try again later', "error");
             }
         });
     });

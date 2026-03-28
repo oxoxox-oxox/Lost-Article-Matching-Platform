@@ -115,6 +115,49 @@
     const reportSubmitBtn = document.getElementById('reportSubmitBtn');
     const reportApiResult = document.getElementById('reportApiResult');
 
+    function getLoginToken() {
+        return localStorage.getItem('token') || localStorage.getItem('access_token') || '';
+    }
+
+    async function ensureLoggedInOrRedirect() {
+        const token = getLoginToken();
+        if (!token) {
+            await window.showAppModal({
+                title: 'Login Required',
+                message: 'Please log in with email first.',
+                type: 'warning'
+            });
+            window.location.href = '/';
+            return false;
+        }
+        try {
+            const resp = await fetch('/auth/me', {
+                method: 'GET',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (!resp.ok) {
+                await window.showAppModal({
+                    title: 'Login Required',
+                    message: 'Please log in with email first.',
+                    type: 'warning'
+                });
+                window.location.href = '/';
+                return false;
+            }
+            return true;
+        } catch (e) {
+            await window.showAppModal({
+                title: 'Login Required',
+                message: 'Please log in with email first.',
+                type: 'warning'
+            });
+            window.location.href = '/';
+            return false;
+        }
+    }
+
+    ensureLoggedInOrRedirect();
+
     document.getElementById('image').addEventListener('change', function (e) {
         const file = e.target.files[0];
         if (file) {
@@ -145,6 +188,11 @@
         const time = document.getElementById('time').value;
         const imageFile = document.getElementById('image').files[0] || null;
 
+        const loggedIn = await ensureLoggedInOrRedirect();
+        if (!loggedIn) {
+            return;
+        }
+
         if (!description) {
             showReportResult('Description is required.', true);
             return;
@@ -167,6 +215,7 @@
             textForm.append('text', composedText);
             const textResp = await fetch('/report/embed_text', {
                 method: 'POST',
+                headers: { 'Authorization': `Bearer ${getLoginToken()}` },
                 body: textForm
             });
             if (!textResp.ok) {
@@ -174,15 +223,18 @@
                 throw new Error(err.detail || 'Text API request failed');
             }
             const textData = await textResp.json();
-            outputs.push(`Text saved: id=${textData.id}, vector_len=${textData.vector_len}.`);
+            const reportId = textData.id;
+            outputs.push(`Text saved in report #${reportId}, vector_len=${textData.vector_len}.`);
 
             if (imageFile) {
                 const imageForm = new FormData();
                 imageForm.append('image', imageFile);
                 imageForm.append('description', composedText);
+                imageForm.append('report_id', String(reportId));
 
                 const imageResp = await fetch('/report/embed_image', {
                     method: 'POST',
+                    headers: { 'Authorization': `Bearer ${getLoginToken()}` },
                     body: imageForm
                 });
                 if (!imageResp.ok) {
@@ -190,7 +242,7 @@
                     throw new Error(err.detail || 'Image API request failed');
                 }
                 const imageData = await imageResp.json();
-                outputs.push(`Image saved: id=${imageData.id}, vector_len=${imageData.vector_len}.`);
+                outputs.push(`Image updated in report #${imageData.id}, vector_len=${imageData.vector_len}.`);
             }
 
             showReportResult(outputs.join(' '));

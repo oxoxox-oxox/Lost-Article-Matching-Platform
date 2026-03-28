@@ -65,6 +65,34 @@
         border-radius: 4px;
         margin-top: 20px;
     }
+
+    .screen-section {
+        margin-top: 16px;
+        padding: 12px;
+        border: 1px solid #dbe2ea;
+        border-radius: 8px;
+        background: #f8fafc;
+    }
+
+    .screen-section h3 {
+        margin: 0 0 8px;
+        font-size: 16px;
+    }
+
+    .screen-summary {
+        margin: 0;
+        font-size: 14px;
+        color: #334155;
+    }
+
+    .match-list {
+        margin: 10px 0 0;
+        padding-left: 18px;
+    }
+
+    .match-list li {
+        margin-bottom: 6px;
+    }
 </style>
 {% endblock %}
 
@@ -101,6 +129,47 @@
     const submitBtn = document.getElementById('submitBtn');
     const apiResult = document.getElementById('apiResult');
 
+    function getLoginToken() {
+        return localStorage.getItem('token') || localStorage.getItem('access_token') || '';
+    }
+
+    async function ensureLoggedInOrRedirect() {
+        const token = getLoginToken();
+        if (!token) {
+            await window.showAppModal({
+                title: 'Login Required',
+                message: 'Please log in with email first.',
+                type: 'warning'
+            });
+            window.location.href = '/';
+            return false;
+        }
+        try {
+            const resp = await fetch('/auth/me', {
+                method: 'GET',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (!resp.ok) {
+                await window.showAppModal({
+                    title: 'Login Required',
+                    message: 'Please log in with email first.',
+                    type: 'warning'
+                });
+                window.location.href = '/';
+                return false;
+            }
+            return true;
+        } catch (e) {
+            await window.showAppModal({
+                title: 'Login Required',
+                message: 'Please log in with email first.',
+                type: 'warning'
+            });
+            window.location.href = '/';
+            return false;
+        }
+    }
+
     document.getElementById('image').addEventListener('change', function (e) {
         const file = e.target.files[0];
         if (file) {
@@ -123,11 +192,85 @@
         }
     }
 
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = String(text || '');
+        return div.innerHTML;
+    }
+
+    function showScreeningPopup(screeningData) {
+        const summary = screeningData?.summary || {};
+        const matches = screeningData?.matches || [];
+
+        const labelCounts = summary.label_counts || {};
+        const yesCount = labelCounts.yes || 0;
+        const maybeCount = labelCounts.maybe || 0;
+        const noCount = labelCounts.no || 0;
+
+        const summaryHtml = `
+            <div class="modal-summary-grid">
+                <div class="modal-summary-item"><span class="modal-summary-label">Candidates Scanned</span><span class="modal-summary-value">${summary.coarse_total ?? 0}</span></div>
+                <div class="modal-summary-item"><span class="modal-summary-label">Passed Initial Filter</span><span class="modal-summary-value">${summary.coarse_pass ?? 0}</span></div>
+                <div class="modal-summary-item"><span class="modal-summary-label">Refined by AI</span><span class="modal-summary-value">${summary.refine_attempted ?? 0}</span></div>
+                <div class="modal-summary-item"><span class="modal-summary-label">Kept as Potential Matches</span><span class="modal-summary-value">${summary.refine_kept ?? 0}</span></div>
+            </div>
+            <p class="modal-intro">Label distribution: yes ${yesCount}, maybe ${maybeCount}, no ${noCount}</p>
+        `;
+
+        if (!matches.length) {
+            window.showAppModal({
+                title: 'No Match Yet',
+                html: `
+                    <p class="modal-intro">No successful match has been found for now. We will notify you by email once a stronger match appears.</p>
+                    ${summaryHtml}
+                `,
+                type: 'warning'
+            });
+            return;
+        }
+
+        const topItemsHtml = matches.slice(0, 5).map((m, idx) => {
+            const finalScore = Number(m.final_score ?? m.score ?? 0).toFixed(4);
+            const coarseScore = Number(m.score ?? 0).toFixed(4);
+            const label = m.refine_label || 'coarse-only';
+            const desc = escapeHtml((m.description || '').replace(/\s+/g, ' ').slice(0, 180));
+            const labelClass = label === 'yes' ? 'success' : (label === 'maybe' ? 'warn' : '');
+            return `
+                <li class="modal-match-item">
+                    <div class="modal-match-head">
+                        <strong>Candidate ${idx + 1} (ID #${m.id})</strong>
+                        <span class="modal-chip ${labelClass}">label: ${escapeHtml(label)}</span>
+                        <span class="modal-chip">final: ${finalScore}</span>
+                        <span class="modal-chip">coarse: ${coarseScore}</span>
+                    </div>
+                    <p class="modal-match-desc">${desc}</p>
+                </li>
+            `;
+        }).join('');
+
+        window.showAppModal({
+            title: 'Match Success',
+            html: `
+                <p class="modal-intro">We found related items. Please review the top candidates below.</p>
+                ${summaryHtml}
+                <ul class="modal-match-list">${topItemsHtml}</ul>
+            `,
+            type: 'success'
+        });
+    }
+
+    ensureLoggedInOrRedirect();
+
     searchForm.addEventListener('submit', async function (e) {
         e.preventDefault();
 
         const description = document.getElementById('description').value.trim();
         const imageFile = document.getElementById('image').files[0] || null;
+
+        const loggedIn = await ensureLoggedInOrRedirect();
+        if (!loggedIn) {
+            return;
+        }
 
         if (!description) {
             showResult('Description is required.', true);
@@ -144,6 +287,7 @@
             textForm.append('text', description);
             const textResp = await fetch('/search/embed_text', {
                 method: 'POST',
+                headers: { 'Authorization': `Bearer ${getLoginToken()}` },
                 body: textForm
             });
             if (!textResp.ok) {
@@ -151,15 +295,18 @@
                 throw new Error(err.detail || 'Text API request failed');
             }
             const textData = await textResp.json();
-            outputs.push(`Text saved: id=${textData.id}, vector_len=${textData.vector_len}.`);
+            const requestId = textData.id;
+            outputs.push(`Text saved in request #${requestId}, vector_len=${textData.vector_len}.`);
 
             if (imageFile) {
                 const imageForm = new FormData();
                 imageForm.append('image', imageFile);
                 imageForm.append('description', description);
+                imageForm.append('request_id', String(requestId));
 
                 const imageResp = await fetch('/search/embed_image', {
                     method: 'POST',
+                    headers: { 'Authorization': `Bearer ${getLoginToken()}` },
                     body: imageForm
                 });
                 if (!imageResp.ok) {
@@ -167,8 +314,26 @@
                     throw new Error(err.detail || 'Image API request failed');
                 }
                 const imageData = await imageResp.json();
-                outputs.push(`Image saved: id=${imageData.id}, vector_len=${imageData.vector_len}.`);
+                outputs.push(`Image updated in request #${imageData.id}, vector_len=${imageData.vector_len}.`);
             }
+
+            const screenForm = new FormData();
+            screenForm.append('text', description);
+            if (imageFile) {
+                screenForm.append('image', imageFile);
+            }
+            const screenResp = await fetch('/search/screen', {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${getLoginToken()}` },
+                body: screenForm
+            });
+            if (!screenResp.ok) {
+                const err = await screenResp.json().catch(() => ({}));
+                throw new Error(err.detail || 'Screening API request failed');
+            }
+            const screenData = await screenResp.json();
+            showScreeningPopup(screenData.screening || {});
+            outputs.push('Two-stage screening completed.');
 
             showResult(outputs.join(' '));
         } catch (error) {

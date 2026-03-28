@@ -7,6 +7,186 @@
     <title>{% block title %}Lamp{% endblock %}</title>
     <link rel="icon" href="/static/favicon.ico" type="image/x-icon">
     <link rel="stylesheet" href="/static/css/style.css?v=1.0.1">
+    <style>
+        .app-modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(15, 23, 42, 0.55);
+            backdrop-filter: blur(3px);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 2000;
+            padding: 16px;
+        }
+
+        .app-modal-overlay.is-open {
+            display: flex;
+        }
+
+        .app-modal {
+            width: min(620px, 96vw);
+            background: #ffffff;
+            color: #0f172a;
+            border-radius: 14px;
+            border: 1px solid #e2e8f0;
+            box-shadow: 0 24px 80px rgba(15, 23, 42, 0.3);
+            overflow: hidden;
+            animation: modalPopIn 180ms ease-out;
+        }
+
+        .app-modal-header {
+            padding: 16px 18px;
+            border-bottom: 1px solid #e2e8f0;
+            background: linear-gradient(90deg, #eff6ff 0%, #f8fafc 100%);
+            font-size: 18px;
+            font-weight: 700;
+        }
+
+        .app-modal-body {
+            padding: 16px 18px;
+            line-height: 1.6;
+            max-height: 55vh;
+            overflow-y: auto;
+            color: #1e293b;
+            font-size: 14px;
+        }
+
+        .modal-intro {
+            margin: 0 0 12px;
+            color: #334155;
+        }
+
+        .modal-summary-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 10px;
+            margin-bottom: 12px;
+        }
+
+        .modal-summary-item {
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            padding: 8px 10px;
+            background: #f8fafc;
+        }
+
+        .modal-summary-label {
+            display: block;
+            font-size: 12px;
+            color: #64748b;
+            margin-bottom: 3px;
+        }
+
+        .modal-summary-value {
+            font-size: 16px;
+            font-weight: 700;
+            color: #0f172a;
+        }
+
+        .modal-match-list {
+            margin: 0;
+            padding: 0;
+            list-style: none;
+            display: grid;
+            gap: 10px;
+        }
+
+        .modal-match-item {
+            border: 1px solid #dbeafe;
+            border-radius: 10px;
+            padding: 10px;
+            background: #f8fbff;
+        }
+
+        .modal-match-head {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            align-items: center;
+            margin-bottom: 6px;
+            font-size: 13px;
+        }
+
+        .modal-chip {
+            border-radius: 999px;
+            padding: 2px 8px;
+            font-size: 12px;
+            background: #e2e8f0;
+            color: #334155;
+        }
+
+        .modal-chip.success {
+            background: #dcfce7;
+            color: #166534;
+        }
+
+        .modal-chip.warn {
+            background: #fef3c7;
+            color: #92400e;
+        }
+
+        .modal-match-desc {
+            margin: 0;
+            color: #334155;
+            font-size: 13px;
+        }
+
+        @media (max-width: 640px) {
+            .modal-summary-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .app-modal-footer {
+            padding: 12px 18px 16px;
+            display: flex;
+            justify-content: flex-end;
+            border-top: 1px solid #e2e8f0;
+            gap: 10px;
+        }
+
+        .app-modal-btn {
+            border: 0;
+            border-radius: 10px;
+            padding: 10px 16px;
+            cursor: pointer;
+            font-weight: 600;
+            color: #ffffff;
+            background: linear-gradient(135deg, #0ea5e9 0%, #2563eb 100%);
+        }
+
+        .app-modal-btn:hover {
+            filter: brightness(0.96);
+        }
+
+        .app-modal-success .app-modal-header {
+            background: linear-gradient(90deg, #dcfce7 0%, #f0fdf4 100%);
+            color: #14532d;
+        }
+
+        .app-modal-warning .app-modal-header {
+            background: linear-gradient(90deg, #fef3c7 0%, #fffbeb 100%);
+            color: #78350f;
+        }
+
+        .app-modal-error .app-modal-header {
+            background: linear-gradient(90deg, #fee2e2 0%, #fef2f2 100%);
+            color: #7f1d1d;
+        }
+
+        @keyframes modalPopIn {
+            from {
+                opacity: 0;
+                transform: translateY(8px) scale(0.98);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
+        }
+    </style>
     {% block head %}{% endblock %}
 </head>
 
@@ -285,6 +465,122 @@
     <footer>
         <p>&copy; 2026 Lost Article Matching Platform</p>
     </footer>
+
+    <div id="appModalOverlay" class="app-modal-overlay" aria-hidden="true">
+        <div id="appModal" class="app-modal" role="dialog" aria-modal="true" aria-labelledby="appModalTitle">
+            <div id="appModalTitle" class="app-modal-header">Notice</div>
+            <div id="appModalBody" class="app-modal-body"></div>
+            <div class="app-modal-footer">
+                <button id="appModalOk" class="app-modal-btn" type="button">OK</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        (function () {
+            const overlay = document.getElementById('appModalOverlay');
+            const dialog = document.getElementById('appModal');
+            const titleEl = document.getElementById('appModalTitle');
+            const bodyEl = document.getElementById('appModalBody');
+            const okBtn = document.getElementById('appModalOk');
+            let resolver = null;
+
+            function closeModal() {
+                overlay.classList.remove('is-open');
+                overlay.setAttribute('aria-hidden', 'true');
+                if (resolver) {
+                    const fn = resolver;
+                    resolver = null;
+                    fn(true);
+                }
+            }
+
+            okBtn.addEventListener('click', closeModal);
+            overlay.addEventListener('click', function (e) {
+                if (e.target === overlay) {
+                    closeModal();
+                }
+            });
+
+            window.showAppModal = function ({
+                title = 'Notice',
+                message = '',
+                html = '',
+                type = 'default',
+                okText = 'OK'
+            } = {}) {
+                dialog.classList.remove('app-modal-success', 'app-modal-warning', 'app-modal-error');
+                if (type === 'success') dialog.classList.add('app-modal-success');
+                if (type === 'warning') dialog.classList.add('app-modal-warning');
+                if (type === 'error') dialog.classList.add('app-modal-error');
+
+                titleEl.textContent = title;
+                if (html) {
+                    bodyEl.innerHTML = html;
+                } else {
+                    bodyEl.textContent = message;
+                }
+                okBtn.textContent = okText;
+
+                overlay.classList.add('is-open');
+                overlay.setAttribute('aria-hidden', 'false');
+
+                return new Promise((resolve) => {
+                    resolver = resolve;
+                });
+            };
+        })();
+    </script>
+
+    <script>
+        (function () {
+            function getLoginToken() {
+                return localStorage.getItem('token') || localStorage.getItem('access_token') || '';
+            }
+
+            async function isLoggedIn() {
+                const token = getLoginToken();
+                if (!token) {
+                    return false;
+                }
+                try {
+                    const resp = await fetch('/auth/me', {
+                        method: 'GET',
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    return resp.ok;
+                } catch (e) {
+                    return false;
+                }
+            }
+
+            async function guardRestrictedNavigation(e) {
+                const link = e.currentTarget;
+                const ok = await isLoggedIn();
+                if (!ok) {
+                    e.preventDefault();
+                    await window.showAppModal({
+                        title: 'Login Required',
+                        message: 'Please log in with email first.',
+                        type: 'warning'
+                    });
+                    window.location.href = '/';
+                    return;
+                }
+                window.location.href = link.getAttribute('href');
+            }
+
+            document.addEventListener('DOMContentLoaded', function () {
+                const guarded = document.querySelectorAll('a[href="/search"], a[href="/report"]');
+                guarded.forEach((link) => {
+                    link.addEventListener('click', function (e) {
+                        e.preventDefault();
+                        guardRestrictedNavigation(e);
+                    });
+                });
+            });
+        })();
+    </script>
     <script src="/static/js/main.js"></script>
     {% block scripts %}{% endblock %}
 </body>
