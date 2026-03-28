@@ -13,44 +13,51 @@ account_router = APIRouter(
 
 templates = Jinja2Templates(directory="templates")
 
+
 @account_router.get("", response_class=HTMLResponse)
 async def account_page(request: Request, db: Session = Depends(get_db)):
-    # 从cookie或localStorage获取token
-    token = request.cookies.get("token") or request.headers.get("Authorization", "").replace("Bearer ", "")
-    
+    # Get token from cookie or localStorage
+    token = request.cookies.get("token") or request.headers.get(
+        "Authorization", "").replace("Bearer ", "")
+
     if not token:
-        # 未登录，跳转到登录页
+        # Not logged in, redirect to login page
         return RedirectResponse(url="/account/login")
-    
+
     try:
-        # 验证token
+        # Verify token
         payload = security.decode_access_token(token)
         email = payload.get("sub")
         if email is None:
-            raise HTTPException(status_code=401, detail="Invalid authentication token")
-        
-        # 查找用户
+            raise HTTPException(
+                status_code=401, detail="Invalid authentication token")
+
+        # Find user
         user = db.query(models.User).filter(models.User.email == email).first()
         if user is None:
             raise HTTPException(status_code=404, detail="User not found")
-        
-        # 已登录，显示个人资料页
+
+        # Logged in, show profile page
         return templates.TemplateResponse("account/profile.html", {"request": request, "user": user})
     except:
-        # token无效，跳转到登录页
+        # Invalid token, redirect to login page
         return RedirectResponse(url="/account/login")
+
 
 @account_router.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request):
     return templates.TemplateResponse("account/login.html", {"request": request})
 
+
 @account_router.get("/register", response_class=HTMLResponse)
 async def register_page(request: Request):
     return templates.TemplateResponse("account/register.html", {"request": request})
 
+
 @account_router.get("/authemail", response_class=HTMLResponse)
 async def authemail_page(request: Request, email: str = Query(None)):
     return templates.TemplateResponse("account/authemail.html", {"request": request, "email": email})
+
 
 @account_router.get("/profile", response_class=HTMLResponse)
 async def profile_page(request: Request):

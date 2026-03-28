@@ -1,10 +1,11 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI Chat</title>
-    <!-- 引入marked.js库用于markdown解析 -->
+    <!-- Import marked.js library for markdown parsing -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <style>
         body {
@@ -13,6 +14,7 @@
             margin: 0 auto;
             padding: 20px;
         }
+
         .chat-container {
             border: 1px solid #ddd;
             border-radius: 8px;
@@ -21,29 +23,35 @@
             height: 400px;
             overflow-y: scroll;
         }
+
         .message {
             margin-bottom: 10px;
             padding: 10px;
             border-radius: 4px;
         }
+
         .user-message {
             background-color: #e3f2fd;
             align-self: flex-end;
         }
+
         .ai-message {
             background-color: #f5f5f5;
             align-self: flex-start;
         }
+
         .input-container {
             display: flex;
             gap: 10px;
         }
+
         input {
             flex: 1;
             padding: 10px;
             border: 1px solid #ddd;
             border-radius: 4px;
         }
+
         button {
             padding: 10px 20px;
             background-color: #2196f3;
@@ -52,40 +60,52 @@
             border-radius: 4px;
             cursor: pointer;
         }
+
         button:hover {
             background-color: #1976d2;
         }
+
         /* 为markdown内容添加样式 */
         .markdown-content {
             line-height: 1.6;
         }
-        .markdown-content h1, .markdown-content h2, .markdown-content h3 {
+
+        .markdown-content h1,
+        .markdown-content h2,
+        .markdown-content h3 {
             margin-top: 16px;
             margin-bottom: 8px;
         }
+
         .markdown-content p {
             margin-bottom: 8px;
         }
-        .markdown-content ul, .markdown-content ol {
+
+        .markdown-content ul,
+        .markdown-content ol {
             margin-bottom: 8px;
             padding-left: 20px;
         }
+
         .markdown-content code {
             background-color: #f0f0f0;
             padding: 2px 4px;
             border-radius: 3px;
             font-family: monospace;
         }
+
         .markdown-content pre {
             background-color: #f0f0f0;
             padding: 10px;
             border-radius: 4px;
             overflow-x: auto;
         }
+
         .markdown-content pre code {
             background-color: transparent;
             padding: 0;
         }
+
         .markdown-content blockquote {
             border-left: 4px solid #2196f3;
             padding-left: 10px;
@@ -94,6 +114,7 @@
         }
     </style>
 </head>
+
 <body>
     <h1>AI Chat</h1>
     <div class="chat-container" id="chat-container"></div>
@@ -118,7 +139,7 @@
         function addMessage(content, isUser) {
             const messageDiv = document.createElement('div');
             messageDiv.className = `message ${isUser ? 'user-message' : 'ai-message'}`;
-            
+
             if (isUser) {
                 // 用户消息直接显示文本
                 messageDiv.textContent = content;
@@ -129,7 +150,7 @@
                 markdownDiv.innerHTML = marked.parse(content);
                 messageDiv.appendChild(markdownDiv);
             }
-            
+
             chatContainer.appendChild(messageDiv);
             chatContainer.scrollTop = chatContainer.scrollHeight;
         }
@@ -177,7 +198,7 @@
                 while (true) {
                     const { done, value } = await reader.read();
                     if (done) break;
-                    
+
                     const chunk = decoder.decode(value, { stream: true });
                     aiResponse += chunk;
                     // 实时解析markdown
@@ -202,4 +223,5 @@
         });
     </script>
 </body>
+
 </html>
