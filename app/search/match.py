@@ -2,9 +2,16 @@ import json
 import os
 import numpy as np
 from openai import OpenAI
-from typing import List, Optional, Dict, Tuple
+from typing import List, Optional, Dict, Tuple, Union
 from sqlalchemy.orm import Session
 from service.models import Report
+from PIL import Image
+
+# Import new fine-ranking function
+try:
+    from app.search.ranking import calculate_fine_ranking_score
+except ImportError:
+    calculate_fine_ranking_score = None
 
 
 def _cosine_similarity(a: List[float], b: List[float]) -> float:
@@ -284,4 +291,133 @@ def run_two_stage_screening(
     refined.sort(key=lambda x: x.get("final_score", 0.0), reverse=True)
     final_matches = refined[:top_n]
     summary["refine_kept"] = len(final_matches)
+    return {"summary": summary, "matches": final_matches}
+
+
+def run_two_stage_screening_multimodal(
+    db: Session,
+    user_text: str,
+    user_image: Optional[Union[str, Image.Image]] = None,
+    top_n: int = 10,
+    coarse_top_k: int = 30,
+    min_coarse_score: float = 0.2,
+    input_text_vector: Optional[List[float]] = None,
+    input_image_vector: Optional[List[float]] = None,
+    engine = None,
+) -> Dict:
+    """Run coarse and fine screening using multimodal embeddings.
+    
+    This is the new screening pipeline that:
+    1) Performs coarse screening via vector similarity.
+    2) Performs fine screening using calculate_fine_ranking_score (rejects LLM calls).
+    
+    Args:
+        db: Database session.
+        user_text: User's original query text.
+        user_image: User's optional image (file path or PIL.Image).
+        top_n: Number of final results to return.
+        coarse_top_k: Number of candidates to keep after coarse screening.
+        min_coarse_score: Minimum coarse score threshold.
+        input_text_vector: Pre-computed user text embedding (optional).
+        input_image_vector: Pre-computed user image embedding (optional).
+        engine: ItemEmbeddingEngine instance for multimodal ranking.
+    
+    Returns:
+        Dictionary with 'summary' and 'matches' keys.
+    """
+    
+    if calculate_fine_ranking_score is None:
+        raise RuntimeError(
+            "calculate_fine_ranking_score is not available. "
+            "Check ranking.py import."
+        )
+    
+    if engine is None:
+        raise ValueError("engine (ItemEmbeddingEngine instance) is required")
+    
+    # Step 1: Coarse screening via vector similarity
+    coarse_all = match_search(
+        db=db,
+        input_text_vector=input_text_vector,
+        input_image_vector=input_image_vector,
+        top_n=coarse_top_k,
+    )
+    coarse_pass = [
+        item for item in coarse_all
+        if float(item.get("score", -1.0)) >= min_coarse_score
+    ]
+    
+    summary = {
+        "coarse_total": len(coarse_all),
+        "coarse_pass": len(coarse_pass),
+        "min_coarse_score": min_coarse_score,
+        "refine_attempted": 0,
+        "refine_kept": 0,
+        "fine_ranking_scores": {},
+    }
+    
+    refined: List[Dict] = []
+    
+    # Step 2: Fine screening via multimodal score
+    for item in coarse_pass:
+        item_id = item.get("id")
+        item_text = (item.get("description") or "").strip()
+        
+        if not item_text:
+            continue
+        
+        summary["refine_attempted"] += 1
+        
+        try:
+            # Fetch the Report record to get image path
+            report = db.query(Report).filter(Report.id == item_id).first()
+            item_image = report.image if report else None
+            
+            # Build full path to image if it exists
+            if item_image:
+                item_image_path = os.path.join("static", item_image)
+                if not os.path.exists(item_image_path):
+                    item_image = None
+            else:
+                item_image = None
+            
+            # Calculate fine-ranking score
+            fine_score = calculate_fine_ranking_score(
+                user_text=user_text,
+                user_image=user_image,
+                item_text=item_text,
+                item_image=item_image,
+                engine=engine,
+            )
+            
+            # Determine label based on score threshold
+            if fine_score >= 0.75:
+                label = "yes"
+            elif fine_score >= 0.45:
+                label = "maybe"
+            else:
+                label = "no"
+            
+            summary["fine_ranking_scores"][str(item_id)] = round(float(fine_score), 4)
+            
+            # Always keep items (no early filtering by label)
+            enriched = dict(item)
+            enriched["refine_label"] = label
+            enriched["refine_output"] = json.dumps({
+                "method": "multimodal-fine-ranking",
+                "fine_score": round(float(fine_score), 4),
+            })
+            enriched["final_score"] = float(fine_score)
+            refined.append(enriched)
+            
+        except Exception as e:
+            # Log error and skip this item
+            summary["fine_ranking_scores"][str(item_id)] = None
+            continue
+    
+    # Sort by fine-ranking score (final_score)
+    refined.sort(key=lambda x: x.get("final_score", 0.0), reverse=True)
+    final_matches = refined[:top_n]
+    summary["refine_kept"] = len(final_matches)
+    
     return {"summary": summary, "matches": final_matches}

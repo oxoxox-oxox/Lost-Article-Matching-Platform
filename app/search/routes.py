@@ -13,9 +13,52 @@ from service.database import get_db
 from sqlalchemy.orm import Session
 from service.models import Request as RequestModel, User
 import service.security as security
-from app.search.match import run_two_stage_screening
+from app.search.match import run_two_stage_screening, run_two_stage_screening_multimodal
 from pydantic import BaseModel
-from typing import Any
+from typing import Any, Optional
+import importlib.util
+
+# Import ItemEmbeddingEngine for multimodal ranking (dynamic import for hyphenated module name)
+def _load_embedding_engine_for_routes() -> tuple[bool, Any, Any]:
+    """Load ItemEmbeddingEngine and EngineConfig from Cross-Modal_Finder.py."""
+    try:
+        module_path = os.path.join(
+            os.path.dirname(__file__),
+            "../../model/Cross-Modal_Finder/Cross-Modal_Finder.py"
+        )
+        module_path = os.path.normpath(module_path)
+        
+        if not os.path.exists(module_path):
+            return False, None, None
+        
+        spec = importlib.util.spec_from_file_location(
+            "cross_modal_finder_routes",
+            module_path
+        )
+        if spec is None or spec.loader is None:
+            return False, None, None
+        
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return True, module.ItemEmbeddingEngine, module.EngineConfig
+    except Exception:
+        return False, None, None
+
+EMBEDDING_ENGINE_AVAILABLE, ItemEmbeddingEngine, EngineConfig = _load_embedding_engine_for_routes()
+
+# Global cache for ItemEmbeddingEngine (lazy initialization)
+_embedding_engine: Optional[Any] = None
+
+def _get_embedding_engine() -> Any:
+    """Get or create the ItemEmbeddingEngine instance (lazy initialization)."""
+    global _embedding_engine
+    if _embedding_engine is None and EMBEDDING_ENGINE_AVAILABLE and EngineConfig is not None:
+        try:
+            config = EngineConfig(device="cpu")  # Use CPU for web service
+            _embedding_engine = ItemEmbeddingEngine(config)
+        except Exception as e:
+            raise RuntimeError(f"Failed to initialize ItemEmbeddingEngine: {e}")
+    return _embedding_engine
 
 search_router = APIRouter(
     prefix="/search",
@@ -429,15 +472,51 @@ async def search_chat(
         raise HTTPException(status_code=500, detail=f"db error: {e}")
 
     try:
-        screening = run_two_stage_screening(
-            db=db,
-            input_text_vector=text_vector,
-            input_image_vector=image_vector,
-            query_description=parsed.normalized_query,
-            top_n=max(1, min(top_n, 10)),
-            coarse_top_k=max(10, min(coarse_top_k, 100)),
-            min_coarse_score=min_coarse_score,
-        )
+        screening = None
+        
+        # Try to use multimodal fine-ranking if engine is available
+        if EMBEDDING_ENGINE_AVAILABLE:
+            try:
+                engine = _get_embedding_engine()
+                
+                # Prepare image for multimodal ranking
+                user_image = None
+                if image_b64:
+                    try:
+                        # Convert base64 to PIL.Image
+                        image_data = base64.b64decode(image_b64.split(",")[-1])
+                        user_image = Image.open(BytesIO(image_data))
+                    except Exception:
+                        user_image = None
+                
+                screening = run_two_stage_screening_multimodal(
+                    db=db,
+                    user_text=parsed.normalized_query,
+                    user_image=user_image,
+                    top_n=max(1, min(top_n, 10)),
+                    coarse_top_k=max(10, min(coarse_top_k, 100)),
+                    min_coarse_score=min_coarse_score,
+                    input_text_vector=text_vector,
+                    input_image_vector=image_vector,
+                    engine=engine,
+                )
+            except Exception as e:
+                import traceback
+                traceback.print_exc()
+                # Fallback to old screening if multimodal fails
+                screening = None
+        
+        # Fallback to old LLM-based screening
+        if screening is None:
+            screening = run_two_stage_screening(
+                db=db,
+                input_text_vector=text_vector,
+                input_image_vector=image_vector,
+                query_description=parsed.normalized_query,
+                top_n=max(1, min(top_n, 10)),
+                coarse_top_k=max(10, min(coarse_top_k, 100)),
+                min_coarse_score=min_coarse_score,
+            )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"screening error: {e}")
 
@@ -661,15 +740,51 @@ async def search_screen(
                 status_code=500, detail=f"image embedding error: {e}")
 
     try:
-        screening = run_two_stage_screening(
-            db=db,
-            input_text_vector=text_vector,
-            input_image_vector=image_vector,
-            query_description=text,
-            top_n=top_n,
-            coarse_top_k=coarse_top_k,
-            min_coarse_score=min_coarse_score,
-        )
+        screening = None
+        
+        # Try to use multimodal fine-ranking if engine is available
+        if EMBEDDING_ENGINE_AVAILABLE:
+            try:
+                engine = _get_embedding_engine()
+                
+                # Prepare image for multimodal ranking
+                user_image = None
+                if image:
+                    try:
+                        # Convert uploaded image to PIL.Image
+                        body = await image.read()
+                        user_image = Image.open(BytesIO(body))
+                    except Exception:
+                        user_image = None
+                
+                screening = run_two_stage_screening_multimodal(
+                    db=db,
+                    user_text=text,
+                    user_image=user_image,
+                    top_n=top_n,
+                    coarse_top_k=coarse_top_k,
+                    min_coarse_score=min_coarse_score,
+                    input_text_vector=text_vector,
+                    input_image_vector=image_vector,
+                    engine=engine,
+                )
+            except Exception as e:
+                import traceback
+                traceback.print_exc()
+                # Fallback to old screening if multimodal fails
+                screening = None
+        
+        # Fallback to old LLM-based screening
+        if screening is None:
+            screening = run_two_stage_screening(
+                db=db,
+                input_text_vector=text_vector,
+                input_image_vector=image_vector,
+                query_description=text,
+                top_n=top_n,
+                coarse_top_k=coarse_top_k,
+                min_coarse_score=min_coarse_score,
+            )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"screening error: {e}")
 
