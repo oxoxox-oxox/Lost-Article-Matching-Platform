@@ -24,13 +24,14 @@ def create_user(db: Session, user: schemas.UserCreate, verification_code: str, c
     db.refresh(db_user)
     return db_user
 
-def update_user_verification(db: Session, user_id: int, is_active: bool = True, verification_code: str = None, code_expires_at: datetime = None):
+def update_user_verification(db: Session, user_id: int, is_active: bool = None, verification_code: str = None, code_expires_at: datetime = None):
     db_user = db.query(models.User).filter(models.User.id == user_id).first()
     if db_user:
-        db_user.is_active = is_active
-        if verification_code:
+        if is_active is not None:
+            db_user.is_active = is_active
+        if verification_code is not None:
             db_user.verification_code = verification_code
-        if code_expires_at:
+        if code_expires_at is not None:
             db_user.code_expires_at = code_expires_at
         db.commit()
         db.refresh(db_user)
