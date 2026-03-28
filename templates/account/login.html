@@ -18,7 +18,7 @@
                 <input type="password" id="password" name="password" required placeholder="Password">
             </div>
             <div class="form-group">
-                <a href="#" class="forgot-password">Forgot Password？</a>
+                <a href="#" class="forgot-password">Forgot Password?</a>
             </div>
             <button type="submit" class="btn btn-primary">Login</button>
         </form>
@@ -31,7 +31,7 @@
 
 {% block scripts %}
 <script>
-    // 检查缓存中的token是否有效
+    // Check whether cached token is valid
     async function checkToken() {
         const token = localStorage.getItem('token');
         if (token) {
@@ -44,17 +44,17 @@
                 });
                 
                 if (response.ok) {
-                    // token有效，自动跳转到账户页面
+                    // Token is valid, redirect to profile page
                     window.location.href = '/account/profile';
                 }
-                // token无效，不执行任何操作
+                // Token is invalid, do nothing
             } catch (error) {
-                // 发生错误，不执行任何操作
+                // On error, do nothing
             }
         }
     }
     
-    // 立即检查token，早于页面加载
+    // Check token immediately, before full page load
     checkToken();
     
     document.addEventListener('DOMContentLoaded', function() {
@@ -80,9 +80,9 @@
                 
                 if (response.ok) {
                     const data = await response.json();
-                    // 保存token
+                    // Save token
                     localStorage.setItem('token', data.access_token);
-                    // 跳转到个人资料页面
+                    // Redirect to profile page
                     window.location.href = '/account/profile';
                 } else {
                     const error = await response.json();
