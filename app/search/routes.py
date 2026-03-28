@@ -19,6 +19,8 @@ from typing import Any, Optional
 import importlib.util
 
 # Import ItemEmbeddingEngine for multimodal ranking (dynamic import for hyphenated module name)
+
+
 def _load_embedding_engine_for_routes() -> tuple[bool, Any, Any]:
     """Load ItemEmbeddingEngine and EngineConfig from Cross-Modal_Finder.py."""
     try:
@@ -27,27 +29,29 @@ def _load_embedding_engine_for_routes() -> tuple[bool, Any, Any]:
             "../../model/Cross-Modal_Finder/Cross-Modal_Finder.py"
         )
         module_path = os.path.normpath(module_path)
-        
+
         if not os.path.exists(module_path):
             return False, None, None
-        
+
         spec = importlib.util.spec_from_file_location(
             "cross_modal_finder_routes",
             module_path
         )
         if spec is None or spec.loader is None:
             return False, None, None
-        
+
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         return True, module.ItemEmbeddingEngine, module.EngineConfig
     except Exception:
         return False, None, None
 
+
 EMBEDDING_ENGINE_AVAILABLE, ItemEmbeddingEngine, EngineConfig = _load_embedding_engine_for_routes()
 
 # Global cache for ItemEmbeddingEngine (lazy initialization)
 _embedding_engine: Optional[Any] = None
+
 
 def _get_embedding_engine() -> Any:
     """Get or create the ItemEmbeddingEngine instance (lazy initialization)."""
@@ -57,8 +61,10 @@ def _get_embedding_engine() -> Any:
             config = EngineConfig(device="cpu")  # Use CPU for web service
             _embedding_engine = ItemEmbeddingEngine(config)
         except Exception as e:
-            raise RuntimeError(f"Failed to initialize ItemEmbeddingEngine: {e}")
+            raise RuntimeError(
+                f"Failed to initialize ItemEmbeddingEngine: {e}")
     return _embedding_engine
+
 
 search_router = APIRouter(
     prefix="/search",
@@ -251,7 +257,7 @@ def _compose_markdown_reply_with_llm(
         "Output requirements: "
         "1) Start with heading '## Search Assistant Reply'; "
         "2) If there are matches, include heading '### Top Matches' and a numbered list; "
-        "3) If no matches, include heading '### Next Steps' with 3 actionable bullets; "
+        "3) If no matches, include No matches and in next line include heading '### Next Steps' with 3 actionable bullets; "
         "4) Keep tone supportive and practical; "
         "5) Do not output JSON or code fences."
     )
@@ -473,12 +479,12 @@ async def search_chat(
 
     try:
         screening = None
-        
+
         # Try to use multimodal fine-ranking if engine is available
         if EMBEDDING_ENGINE_AVAILABLE:
             try:
                 engine = _get_embedding_engine()
-                
+
                 # Prepare image for multimodal ranking
                 user_image = None
                 if image_b64:
@@ -488,7 +494,7 @@ async def search_chat(
                         user_image = Image.open(BytesIO(image_data))
                     except Exception:
                         user_image = None
-                
+
                 screening = run_two_stage_screening_multimodal(
                     db=db,
                     user_text=parsed.normalized_query,
@@ -505,7 +511,7 @@ async def search_chat(
                 traceback.print_exc()
                 # Fallback to old screening if multimodal fails
                 screening = None
-        
+
         # Fallback to old LLM-based screening
         if screening is None:
             screening = run_two_stage_screening(
@@ -741,12 +747,12 @@ async def search_screen(
 
     try:
         screening = None
-        
+
         # Try to use multimodal fine-ranking if engine is available
         if EMBEDDING_ENGINE_AVAILABLE:
             try:
                 engine = _get_embedding_engine()
-                
+
                 # Prepare image for multimodal ranking
                 user_image = None
                 if image:
@@ -756,7 +762,7 @@ async def search_screen(
                         user_image = Image.open(BytesIO(body))
                     except Exception:
                         user_image = None
-                
+
                 screening = run_two_stage_screening_multimodal(
                     db=db,
                     user_text=text,
@@ -773,7 +779,7 @@ async def search_screen(
                 traceback.print_exc()
                 # Fallback to old screening if multimodal fails
                 screening = None
-        
+
         # Fallback to old LLM-based screening
         if screening is None:
             screening = run_two_stage_screening(

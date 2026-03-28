@@ -388,6 +388,87 @@ main {
     color: var(--text-muted);
 }
 
+.home-cta {
+    position: relative;
+    width: min(1040px, 100%);
+    margin: 52px auto 14px;
+    padding: 68px 44px;
+    text-align: center;
+    border: 1px solid var(--line-soft);
+    border-radius: 32px;
+    background:
+        radial-gradient(720px 300px at 10% -15%, rgba(142, 197, 255, 0.26), transparent 62%),
+        radial-gradient(620px 280px at 90% 120%, rgba(127, 241, 207, 0.2), transparent 65%),
+        linear-gradient(160deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.06));
+    box-shadow: var(--shadow-soft);
+    overflow: hidden;
+}
+
+.home-cta::before {
+    content: '';
+    position: absolute;
+    width: 360px;
+    height: 360px;
+    border-radius: 999px;
+    right: -130px;
+    top: -170px;
+    background: rgba(158, 207, 255, 0.2);
+    filter: blur(42px);
+    pointer-events: none;
+}
+
+.home-cta-shell {
+    position: relative;
+    z-index: 1;
+    max-width: 920px;
+    margin: 0 auto;
+    text-align: center;
+}
+
+.home-cta-kicker {
+    display: inline-block;
+    padding: 8px 14px;
+    margin-bottom: 16px;
+    border-radius: 999px;
+    border: 1px solid rgba(142, 197, 255, 0.32);
+    background: rgba(142, 197, 255, 0.12);
+    color: #e5f2ff;
+    font-size: 0.78rem;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+}
+
+.home-cta h2 {
+    font-size: clamp(2.25rem, 4.8vw, 3.7rem);
+    line-height: 1.2;
+    margin-bottom: 18px;
+    letter-spacing: -0.02em;
+    max-width: 20ch;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.home-cta-lead {
+    max-width: 820px;
+    margin: 0 auto;
+    color: var(--text-muted);
+    font-size: 1.2rem;
+    line-height: 1.85;
+}
+
+.home-cta-actions {
+    margin-top: 30px;
+    display: flex;
+    justify-content: center;
+}
+
+.home-cta-primary {
+    min-width: 220px;
+    padding: 16px 34px;
+    font-size: 1.15rem;
+    border-radius: 999px;
+}
+
 /* Card Styles */
 .card {
     background: rgba(255, 255, 255, 0.09);
@@ -621,6 +702,30 @@ footer {
 
     .home-hero {
         padding: 34px 18px;
+    }
+
+    .home-cta {
+        margin-top: 36px;
+        padding: 42px 18px;
+        border-radius: 22px;
+    }
+
+    .home-cta-kicker {
+        margin-bottom: 12px;
+    }
+
+    .home-cta h2 {
+        max-width: 100%;
+    }
+
+    .home-cta-lead {
+        font-size: 1.06rem;
+        line-height: 1.75;
+    }
+
+    .home-cta-primary {
+        width: 100%;
+        max-width: 280px;
     }
 
     .hero-metrics {
