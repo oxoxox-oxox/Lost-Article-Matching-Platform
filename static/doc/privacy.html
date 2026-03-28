@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Privacy Policy - LAMP</title>
+    <link rel="icon" href="/static/favicon.ico" type="image/x-icon">
+    <link rel="stylesheet" href="/static/css/style.css?v=1.0.1">
+    <style>
+        .legal-container { max-width: 800px; margin: 40px auto; padding: 40px; background: var(--surface); border: 1px solid var(--line-soft); border-radius: 24px; }
+        h1 { color: var(--accent); margin-bottom: 8px; }
+        .last-updated { color: var(--brand); font-size: 0.8rem; text-transform: uppercase; margin-bottom: 30px; display: block; }
+        h2 { color: var(--text-main); font-size: 1.4rem; margin: 25px 0 12px; }
+        h3 { color: var(--brand); font-size: 1.1rem; margin-top: 15px; }
+        p, li { color: var(--text-muted); line-height: 1.8; margin-bottom: 12px; }
+    </style>
+</head>
+<body>
+    <header>
+        <nav><div class="logo">LAMP Document</div><ul><li><a href="/">Home</a></li></ul></nav>
+    </header>
+
+    <main class="container">
+        <div class="legal-container">
+            <span class="last-updated">Last Updated: March 28, 2026</span>
+            <h1>Privacy Policy</h1>
+            <p>Your privacy is a priority at LAMP. This policy explains how we collect and use your information.</p>
+
+            <h2>1. Information Collection</h2>
+            <h3>Account Information</h3>
+            <p>We store your email and a securely hashed version of your password (using <code>passlib</code>). We do not store plain-text passwords.</p>
+            <h3>Report Data</h3>
+            <p>When you report an item, we collect descriptions and images. These are stored in our MySQL database and used to facilitate matching.</p>
+
+            <h2>2. AI & Data Processing</h2>
+            <p>To improve matching accuracy, we use AI services (including OpenAI and ZhipuAI). By uploading item details, you acknowledge that this data may be processed by these third-party providers to identify objects and keywords.</p>
+
+            <h2>3. Cookies & Security</h2>
+            <p>We use JSON Web Tokens (JWT) for session management. These tokens are stored on your device to keep you logged in. We implement SQLAlchemy-based security protocols to prevent unauthorized database access.</p>
+
+            <h2>4. Third-Party Sharing</h2>
+            <p>We do not sell your personal data. Your contact information is only revealed to another user once a potential match is confirmed and both parties agree to connect.</p>
+
+            <h2>5. Your Rights</h2>
+            <p>You may view, edit, or delete your lost/found reports at any time through your account dashboard. For total account deletion, please contact the system administrator.</p>
+        </div>
+    </main>
+
+    <footer><p>&copy; 2026 LAMP. Securely powered by FastAPI.</p></footer>
+</body>
+</html>
