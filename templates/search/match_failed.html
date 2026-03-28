@@ -1,13 +1,88 @@
 {% extends "index.html" %} {% block title %}Report Lost Item - Lamp{% endblock
 %} {% block head %}
 <style>
+  :root {
+    --ink: #0f172a;
+    --muted: #64748b;
+    --line: #dbe2ea;
+    --panel: #ffffff;
+    --accent: #1d4ed8;
+    --accent-soft: #dbeafe;
+    --ok: #166534;
+    --ok-bg: #dcfce7;
+    --warn: #92400e;
+    --warn-bg: #fef3c7;
+  }
   .failed-form {
-    max-width: 800px;
+    max-width: 860px;
     margin: 16px auto;
-    padding: 16px;
-    border: 1px solid #e6eef6;
-    border-radius: 8px;
+    padding: 18px;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: linear-gradient(180deg, #f8fbff 0%, #ffffff 45%);
+    color: var(--ink);
+    box-shadow: 0 16px 36px rgba(15, 23, 42, 0.08);
+  }
+  .title-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .round-chip {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: var(--accent-soft);
+    color: #1e3a8a;
+    font-size: 12px;
+    font-weight: 700;
+    border: 1px solid #bfdbfe;
+  }
+  .terminal-box,
+  .diagnostic-box {
+    margin-top: 14px;
+    padding: 12px;
+    border-radius: 10px;
+    border: 1px solid var(--line);
     background: #fff;
+  }
+  .terminal-box {
+    background: #f8fafc;
+  }
+  .terminal-box p {
+    margin: 0;
+    color: #1e293b;
+    font-weight: 600;
+  }
+  .diag-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+  .diag-card {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 10px;
+    background: #f8fafc;
+  }
+  .diag-card h4 {
+    margin: 0 0 8px;
+    font-size: 14px;
+  }
+  .diag-list {
+    margin: 0;
+    padding-left: 18px;
+  }
+  .diag-list li {
+    margin: 4px 0;
+    color: #334155;
+    font-size: 14px;
+  }
+  .diag-list li.priority {
+    color: #7c2d12;
+    font-weight: 700;
   }
   .form-group {
     margin-bottom: 12px;
@@ -23,6 +98,7 @@
     padding: 8px;
     border: 1px solid #d1d5db;
     border-radius: 6px;
+    background: #fff;
   }
   .btn {
     padding: 10px 14px;
@@ -33,19 +109,99 @@
     color: #fff;
   }
   .info {
-    color: #6b7280;
+    color: var(--muted);
     margin-bottom: 8px;
+  }
+  .hidden {
+    display: none;
+  }
+  @media (max-width: 768px) {
+    .diag-grid {
+      grid-template-columns: 1fr;
+    }
   }
 </style>
 {% endblock %} {% block content %}
 <div class="failed-form">
-  <h2>Not a match — please provide more details</h2>
+  <div class="title-row">
+    <h2>No high-confidence match yet</h2>
+    <span class="round-chip">Assist round: {{ assist_round }}</span>
+  </div>
   <p class="info">
-    Describe the item clearly (category, color, material, distinguishing
-    features) and include the location where you lost it.
+    The system analyzed your description and generated targeted guidance.
+    Please improve your details before submitting this request.
   </p>
 
+  {% if terminal_reached %}
+  <div class="terminal-box">
+    <p>{{ terminal_message }}</p>
+  </div>
+  {% endif %}
+
+  {% if diagnostic and not terminal_reached %}
+  <div class="diagnostic-box">
+    <h3>Personalized Feature Guidance</h3>
+    <div class="diag-grid">
+      <div class="diag-card">
+        <h4>Identified Features</h4>
+        {% if diagnostic.identified_features %}
+        <ul class="diag-list">
+          {% for k, v in diagnostic.identified_features.items() %}
+          <li>{{ k }}: {{ v }}</li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <p class="info">No clear feature was detected yet.</p>
+        {% endif %}
+      </div>
+      <div class="diag-card">
+        <h4>Missing Key Attributes (Priority)</h4>
+        {% if diagnostic.missing_attributes %}
+        <ul class="diag-list">
+          {% for item in diagnostic.missing_attributes %}
+          <li class="priority">{{ item }}</li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <p class="info">Core attributes look good.</p>
+        {% endif %}
+      </div>
+      <div class="diag-card">
+        <h4>Other Missing Features</h4>
+        {% if diagnostic.missing_features %}
+        <ul class="diag-list">
+          {% for item in diagnostic.missing_features %}
+          <li>{{ item }}</li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <p class="info">No extra feature gap detected.</p>
+        {% endif %}
+      </div>
+      <div class="diag-card">
+        <h4>Suggested Improvements</h4>
+        {% if diagnostic.suggestions %}
+        <ul class="diag-list">
+          {% for s in diagnostic.suggestions %}
+          <li>{{ s }}</li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <p class="info">Please add brand, color, material, location and time.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
   <form id="failedForm">
+    <input type="hidden" id="assist_round" name="assist_round" value="{{ assist_round }}" />
+    <input
+      type="hidden"
+      id="diagnostic_payload"
+      name="diagnostic_payload"
+      value="{{ diagnostic_payload or '' }}"
+    />
     <div class="form-group">
       <label for="description">Item Description</label>
       <textarea id="description" name="description" rows="6" required>
@@ -61,7 +217,7 @@
         placeholder="Where did you lose it?"
       />
     </div>
-    <button id="submitBtn" class="btn" type="submit">
+    <button id="submitBtn" class="btn {% if terminal_reached %}hidden{% endif %}" type="submit">
       Submit Lost Item Request
     </button>
   </form>
@@ -89,9 +245,72 @@
   const failedForm = document.getElementById("failedForm");
   const submitBtn = document.getElementById("submitBtn");
   const resultDiv = document.getElementById("result");
+  const terminalReached = {{ "true" if terminal_reached else "false" }};
+  const terminalMessageFromServer = {{ (terminal_message or "")|tojson }};
+
+  function showError(msg) {
+    resultDiv.style.display = "block";
+    resultDiv.textContent = msg;
+    resultDiv.style.color = "#991b1b";
+  }
+
+  function showSuccess(msg) {
+    resultDiv.style.display = "block";
+    resultDiv.textContent = msg;
+    resultDiv.style.color = "#065f46";
+  }
+
+  async function showTerminalModal(message) {
+    const text =
+      message ||
+      "Item is not currently in our database. We will notify you by email if a matching record appears.";
+
+    if (typeof window.showAppModal === "function") {
+      await window.showAppModal({
+        title: "Search Completed",
+        message: text,
+        type: "warning",
+        okText: "I Understand",
+        showCancel: false,
+      });
+      window.location.href = "/search/";
+      return;
+    }
+
+    // Fallback if modal helper is unavailable.
+    showSuccess(text);
+    setTimeout(() => {
+      window.location.href = "/search/";
+    }, 500);
+  }
+
+  function buildMatchLinks(matches) {
+    if (!Array.isArray(matches) || !matches.length) {
+      return "";
+    }
+    return matches
+      .slice(0, 5)
+      .map((item, idx) => {
+        const url = item?.success_url || "";
+        const id = item?.id ?? idx + 1;
+        const score = Number(item?.final_score ?? item?.score ?? 0).toFixed(2);
+        if (!url) return "";
+        return `<a href="${url}" style="display:block;margin:6px 0;color:#1d4ed8;text-decoration:underline;">Candidate #${id} (score: ${score})</a>`;
+      })
+      .join("");
+  }
+
+  if (terminalReached) {
+    const formEls = failedForm.querySelectorAll("textarea, input[type='text']");
+    formEls.forEach((el) => {
+      el.setAttribute("disabled", "disabled");
+    });
+    showTerminalModal(terminalMessageFromServer);
+  }
 
   failedForm.addEventListener("submit", async function (e) {
     e.preventDefault();
+    if (terminalReached) return;
     if (!(await ensureLogin())) return;
     submitBtn.disabled = true;
     submitBtn.textContent = "Submitting...";
@@ -106,34 +325,78 @@
       return;
     }
 
-    const fd = new FormData();
-    fd.append("description", description);
-    if (location) fd.append("location", location);
+    const assistRoundVal = document.getElementById("assist_round").value || "0";
+    const payload = document.getElementById("diagnostic_payload").value || "";
+
+    const screenFd = new FormData();
+    screenFd.append("text", description);
+    screenFd.append("assist_round", assistRoundVal);
+    screenFd.append("top_n", "10");
+    screenFd.append("coarse_top_k", "30");
+    screenFd.append("min_coarse_score", "0.2");
 
     try {
-      const resp = await fetch("/search/match/failed/submit", {
+      // Step 1: re-run screening using supplemented description.
+      const screenResp = await fetch("/search/screen", {
         method: "POST",
         headers: { Authorization: `Bearer ${getLoginToken()}` },
-        body: fd,
+        body: screenFd,
       });
-      const data = await resp.json();
-      if (resp.ok && data.status === "created") {
+
+      const screenData = await screenResp.json().catch(() => ({}));
+      if (!screenResp.ok) {
+        throw new Error(screenData.detail || "Screening failed.");
+      }
+
+      const matches = Array.isArray(screenData?.screening?.matches)
+        ? screenData.screening.matches
+        : [];
+
+      if (matches.length > 0) {
+        const linksHtml = buildMatchLinks(matches);
         resultDiv.style.display = "block";
-        resultDiv.textContent =
-          "Request created (ID #" +
-          data.id +
-          "). We will notify you when matches appear.";
         resultDiv.style.color = "#065f46";
-        setTimeout(() => (window.location.href = "/search/"), 1500);
+        resultDiv.innerHTML =
+          "Potential matches found. Please continue with one candidate:" +
+          linksHtml;
+        return;
+      }
+
+      // If still not matched but not terminal, jump to next assist round page.
+      if (!screenData?.terminal?.reached && screenData?.outcome?.failed_url) {
+        showSuccess("No match yet. Updating guidance for next round...");
+        setTimeout(() => {
+          window.location.href = screenData.outcome.failed_url;
+        }, 400);
+        return;
+      }
+
+      // Step 2: terminal reached -> persist request once, with cleanup-aware fields.
+      const terminalMessage =
+        screenData?.terminal?.message ||
+        "Item is not currently in our database. We will notify you by email if a matching record appears.";
+
+      const submitFd = new FormData();
+      submitFd.append("description", description);
+      if (location) submitFd.append("location", location);
+      submitFd.append("assist_round", assistRoundVal);
+      if (payload) submitFd.append("diagnostic_payload", payload);
+
+      const submitResp = await fetch("/search/match/failed/submit", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${getLoginToken()}` },
+        body: submitFd,
+      });
+      const submitData = await submitResp.json().catch(() => ({}));
+      if (submitResp.ok && submitData.status === "created") {
+        const finalMessage = submitData?.terminal_message || terminalMessage;
+        await showTerminalModal(finalMessage);
+        showSuccess(finalMessage + " (Request ID #" + submitData.id + ")");
       } else {
-        resultDiv.style.display = "block";
-        resultDiv.textContent = data.detail || JSON.stringify(data);
-        resultDiv.style.color = "#991b1b";
+        showError(submitData.detail || JSON.stringify(submitData));
       }
     } catch (e) {
-      resultDiv.style.display = "block";
-      resultDiv.textContent = e.message;
-      resultDiv.style.color = "#991b1b";
+      showError(e.message);
     } finally {
       submitBtn.disabled = false;
       submitBtn.textContent = "Submit Lost Item Request";

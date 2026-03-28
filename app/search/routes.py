@@ -5,6 +5,8 @@ from fastapi.responses import HTMLResponse, JSONResponse
 import os
 import base64
 import json
+from datetime import datetime, timedelta
+from urllib.parse import urlencode, quote, unquote
 from io import BytesIO
 from PIL import Image
 from zhipuai import ZhipuAI
@@ -13,6 +15,7 @@ from sqlalchemy.orm import Session
 from service.models import Request as RequestModel, User, Report
 import service.security as security
 from app.search.match import run_two_stage_screening
+from app.search.diagnostic import analyze_item_features, fallback_diagnostic
 from fastapi.responses import Response
 import struct
 
@@ -21,6 +24,91 @@ search_router = APIRouter(
     tags=["Search"]
 )
 templates = Jinja2Templates(directory="templates")
+
+TERMINAL_MESSAGE = "Item is not currently in our database. We will notify you by email if a matching record appears."
+
+
+def _encode_json_payload(payload: dict | None) -> str | None:
+    if not payload:
+        return None
+    try:
+        raw = json.dumps(payload, ensure_ascii=False)
+        return base64.urlsafe_b64encode(raw.encode("utf-8")).decode("ascii")
+    except Exception:
+        return None
+
+
+def _decode_json_payload(payload: str | None) -> dict | None:
+    if not payload:
+        return None
+    try:
+        raw = base64.urlsafe_b64decode(payload.encode("ascii")).decode("utf-8")
+        parsed = json.loads(raw)
+        return parsed if isinstance(parsed, dict) else None
+    except Exception:
+        return None
+
+
+def _build_failed_url(
+    text: str,
+    assist_round: int,
+    diagnostic_payload: dict | None = None,
+    terminal_reached: bool = False,
+    terminal_message: str | None = None,
+) -> str:
+    prefill_text = base64.b64encode(text.encode("utf-8")).decode("ascii")
+    params = {
+        "prefill_description": prefill_text,
+        "assist_round": str(max(0, int(assist_round))),
+    }
+
+    payload = _encode_json_payload(diagnostic_payload)
+    if payload:
+        params["diagnostic_payload"] = payload
+
+    if terminal_reached:
+        params["terminal_reached"] = "1"
+        if terminal_message:
+            params["terminal_message"] = quote(terminal_message)
+
+    return f"/search/match/failed?{urlencode(params)}"
+
+
+def _trim_and_schedule_terminal_cleanup(record: RequestModel) -> None:
+    now = datetime.utcnow()
+    retention_days = int(os.getenv("REQUEST_TERMINAL_RETENTION_DAYS", "14"))
+    if retention_days < 1:
+        retention_days = 1
+
+    record.diagnostic_data = None
+    record.identified_features = None
+    record.missing_features = None
+    record.terminal_reached = True
+    record.terminal_reached_at = now
+    record.cleanup_due_at = now + timedelta(days=retention_days)
+    record.cleanup_status = "pending"
+
+
+def _cleanup_due_terminal_requests(db: Session, page_size: int = 50) -> int:
+    now = datetime.utcnow()
+    rows = (
+        db.query(RequestModel)
+        .filter(RequestModel.terminal_reached == True)  # noqa: E712
+        .filter(RequestModel.cleanup_status == "pending")
+        .filter(RequestModel.cleanup_due_at.isnot(None))
+        .filter(RequestModel.cleanup_due_at <= now)
+        .order_by(RequestModel.id.asc())
+        .limit(page_size)
+        .all()
+    )
+    if not rows:
+        return 0
+
+    for row in rows:
+        db.delete(row)
+
+    db.commit()
+    return len(rows)
 
 
 def _require_auth_user(request: Request, db: Session = Depends(get_db)) -> User:
@@ -275,6 +363,7 @@ async def search_screen(
     request: Request,
     text: str = Form(...),
     image: UploadFile | None = File(None),
+    assist_round: int = Form(0),
     top_n: int = Form(10),
     coarse_top_k: int = Form(30),
     min_coarse_score: float = Form(0.2),
@@ -358,8 +447,67 @@ async def search_screen(
                 item["token"] = None
                 item["success_url"] = None
 
-    prefill_text = base64.b64encode(text.encode("utf-8")).decode("ascii")
-    failed_url = f"/search/match/failed?prefill_description={prefill_text}"
+    safe_round = max(0, int(assist_round or 0))
+    matched_count = len(matches) if isinstance(matches, list) else 0
+
+    if matched_count == 0:
+        if safe_round >= 2:
+            failed_url = _build_failed_url(
+                text=text,
+                assist_round=safe_round,
+                terminal_reached=True,
+                terminal_message=TERMINAL_MESSAGE,
+            )
+            return JSONResponse({
+                "query": {
+                    "has_image": bool(image),
+                    "text_len": len(text),
+                    "image_prompt_text": image_prompt_text,
+                },
+                "screening": screening,
+                "diagnostic": None,
+                "terminal": {
+                    "reached": True,
+                    "message": TERMINAL_MESSAGE,
+                },
+                "outcome": {
+                    "matched_count": 0,
+                    "failed_url": failed_url,
+                }
+            })
+
+        diagnostic = None
+        try:
+            diagnostic = await analyze_item_features(user_text=text)
+        except Exception:
+            diagnostic = None
+
+        if not diagnostic:
+            diagnostic = fallback_diagnostic(text)
+
+        next_round = safe_round + 1
+        failed_url = _build_failed_url(
+            text=text,
+            assist_round=next_round,
+            diagnostic_payload=diagnostic,
+            terminal_reached=False,
+        )
+
+        return JSONResponse({
+            "query": {
+                "has_image": bool(image),
+                "text_len": len(text),
+                "image_prompt_text": image_prompt_text,
+            },
+            "screening": screening,
+            "diagnostic": diagnostic,
+            "terminal": {"reached": False},
+            "assist_round_next": next_round,
+            "outcome": {
+                "matched_count": 0,
+                "failed_url": failed_url,
+            }
+        })
 
     return JSONResponse({
         "query": {
@@ -368,9 +516,15 @@ async def search_screen(
             "image_prompt_text": image_prompt_text,
         },
         "screening": screening,
+        "diagnostic": None,
+        "terminal": {"reached": False},
         "outcome": {
-            "matched_count": len(matches) if isinstance(matches, list) else 0,
-            "failed_url": failed_url,
+            "matched_count": matched_count,
+            "failed_url": _build_failed_url(
+                text=text,
+                assist_round=safe_round,
+                terminal_reached=False,
+            ),
         }
     })
 
@@ -440,7 +594,15 @@ async def match_confirm(
 
 
 @search_router.get('/match/failed', response_class=HTMLResponse)
-async def match_failed_page(request: Request, prefill_description: str | None = None, current_user: User | None = Depends(_optional_auth_user)):
+async def match_failed_page(
+    request: Request,
+    prefill_description: str | None = None,
+    assist_round: int = 0,
+    diagnostic_payload: str | None = None,
+    terminal_reached: int = 0,
+    terminal_message: str | None = None,
+    current_user: User | None = Depends(_optional_auth_user),
+):
     """Render the match-failed page where user can create a new `Request` (lost-item request)."""
     pre = None
     if prefill_description:
@@ -448,7 +610,20 @@ async def match_failed_page(request: Request, prefill_description: str | None = 
             pre = base64.b64decode(prefill_description).decode('utf-8')
         except Exception:
             pre = prefill_description
-    return templates.TemplateResponse(request, "search/match_failed.html", {"request": request, "prefill_description": pre})
+    decoded_diagnostic = _decode_json_payload(diagnostic_payload)
+    msg = TERMINAL_MESSAGE
+    if terminal_message:
+        msg = unquote(terminal_message)
+
+    return templates.TemplateResponse(request, "search/match_failed.html", {
+        "request": request,
+        "prefill_description": pre,
+        "assist_round": max(0, int(assist_round or 0)),
+        "diagnostic": decoded_diagnostic,
+        "terminal_reached": bool(int(terminal_reached or 0)),
+        "terminal_message": msg,
+        "diagnostic_payload": diagnostic_payload,
+    })
 
 
 @search_router.post('/match/failed/submit')
@@ -456,6 +631,8 @@ async def match_failed_submit(
     request: Request,
     description: str = Form(...),
     location: str | None = Form(None),
+    assist_round: int = Form(0),
+    diagnostic_payload: str | None = Form(None),
     current_user: User = Depends(_require_auth_user),
     db: Session = Depends(get_db),
 ):
@@ -464,11 +641,35 @@ async def match_failed_submit(
     if location:
         composed = f"{composed}\nLocation: {location}"
 
+    safe_round = max(0, int(assist_round or 0))
+    diagnostic = _decode_json_payload(diagnostic_payload)
+
     try:
-        record = RequestModel(user_id=current_user.id, description=composed)
+        record = RequestModel(
+            user_id=current_user.id,
+            description=composed,
+            assist_round=safe_round,
+            terminal_reached=False,
+        )
+        if diagnostic:
+            record.diagnostic_data = json.dumps(diagnostic)
+            record.identified_features = json.dumps(
+                diagnostic.get("identified_features") or {}
+            )
+            merged_missing = []
+            merged_missing.extend(diagnostic.get("missing_attributes") or [])
+            merged_missing.extend(diagnostic.get("missing_features") or [])
+            record.missing_features = json.dumps(merged_missing)
+
+        if safe_round >= 2:
+            _trim_and_schedule_terminal_cleanup(record)
+
         db.add(record)
         db.commit()
         db.refresh(record)
+
+        # Run lightweight paged cleanup for due terminal records.
+        _cleanup_due_terminal_requests(db=db, page_size=50)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"db error: {e}")
 
@@ -478,4 +679,11 @@ async def match_failed_submit(
     except Exception:
         token = str(record.id)
 
-    return JSONResponse({"status": "created", "id": record.id, "token": token})
+    return JSONResponse({
+        "status": "created",
+        "id": record.id,
+        "token": token,
+        "assist_round": safe_round,
+        "terminal_reached": bool(record.terminal_reached),
+        "terminal_message": TERMINAL_MESSAGE if bool(record.terminal_reached) else None,
+    })

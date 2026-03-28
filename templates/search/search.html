@@ -378,6 +378,7 @@
 
     let selectedImage = null;
     const chatHistory = [];
+    let assistRound = 0;
     // Placeholder routes: teammates can implement these pages later.
     const OUTCOME_REDIRECTS = {
         matched: '/search/match-result',
@@ -593,6 +594,7 @@
         const failedUrlFromApi = data?.outcome?.failed_url;
 
         if (matches.length > 0) {
+            assistRound = 0;
             const actionButtons = buildMatchActionButtons(matches, requestId);
             return {
                 title: 'Potential Match Found',
@@ -606,6 +608,8 @@
         }
 
         if (matches.length === 0) {
+            const nextRound = Number(data?.assist_round_next ?? assistRound + 1);
+            assistRound = Number.isFinite(nextRound) ? nextRound : (assistRound + 1);
             const fallbackUrl = failedUrlFromApi || `${OUTCOME_REDIRECTS.impossible}?request_id=${encodeURIComponent(requestId)}`;
             return {
                 title: 'No Likely Match Right Now',
@@ -687,6 +691,7 @@
             form.append('top_n', '8');
             form.append('coarse_top_k', '30');
             form.append('min_coarse_score', '0.2');
+            form.append('assist_round', String(assistRound));
 
             const resp = await fetch('/search/screen', {
                 method: 'POST',

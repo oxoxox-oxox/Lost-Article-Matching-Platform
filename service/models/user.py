@@ -47,3 +47,11 @@ class Request(Base):
     # Embedding vectors are long JSON arrays, so Text is required.
     features_img = Column(Text, nullable=True)
     features_dis = Column(Text, nullable=True)
+    diagnostic_data = Column(Text, nullable=True)
+    identified_features = Column(Text, nullable=True)
+    missing_features = Column(Text, nullable=True)
+    assist_round = Column(Integer, default=0)
+    terminal_reached = Column(Boolean, default=False)
+    terminal_reached_at = Column(DateTime, nullable=True)
+    cleanup_due_at = Column(DateTime, nullable=True)
+    cleanup_status = Column(String(20), default="pending")

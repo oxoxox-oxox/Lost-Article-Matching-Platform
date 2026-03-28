@@ -42,6 +42,52 @@ def _ensure_report_image_data_column() -> None:
 
 _ensure_report_image_data_column()
 
+
+def _ensure_request_assist_columns() -> None:
+    """Add request assist/terminal columns if they do not exist (additive migration only)."""
+    try:
+        with engine.begin() as conn:
+            dialect = conn.dialect.name
+            if dialect == "mysql":
+                columns = {
+                    "diagnostic_data": "LONGTEXT NULL",
+                    "identified_features": "LONGTEXT NULL",
+                    "missing_features": "LONGTEXT NULL",
+                    "assist_round": "INT DEFAULT 0",
+                    "terminal_reached": "TINYINT(1) DEFAULT 0",
+                    "terminal_reached_at": "DATETIME NULL",
+                    "cleanup_due_at": "DATETIME NULL",
+                    "cleanup_status": "VARCHAR(20) DEFAULT 'pending'",
+                }
+                for col, ddl in columns.items():
+                    exists = conn.execute(
+                        text(f"SHOW COLUMNS FROM requests LIKE '{col}'")
+                    ).first()
+                    if not exists:
+                        conn.execute(text(f"ALTER TABLE requests ADD COLUMN {col} {ddl}"))
+            elif dialect == "sqlite":
+                rows = conn.execute(text("PRAGMA table_info(requests)")).fetchall()
+                col_names = {row[1] for row in rows}
+                columns = {
+                    "diagnostic_data": "TEXT",
+                    "identified_features": "TEXT",
+                    "missing_features": "TEXT",
+                    "assist_round": "INTEGER DEFAULT 0",
+                    "terminal_reached": "INTEGER DEFAULT 0",
+                    "terminal_reached_at": "TEXT",
+                    "cleanup_due_at": "TEXT",
+                    "cleanup_status": "TEXT DEFAULT 'pending'",
+                }
+                for col, ddl in columns.items():
+                    if col not in col_names:
+                        conn.execute(text(f"ALTER TABLE requests ADD COLUMN {col} {ddl}"))
+    except Exception:
+        # Do not block startup if migration check fails.
+        pass
+
+
+_ensure_request_assist_columns()
+
 app = FastAPI(
     title="Lamp",
     description="Lost Article Matching Platform",
