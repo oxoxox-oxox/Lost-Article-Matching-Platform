@@ -441,16 +441,11 @@ async def search_chat(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"screening error: {e}")
 
-    fallback_reply = _normalize_markdown_text(
+    # For actual search results, reply from verified screening output directly.
+    # This avoids LLM paraphrasing that can hallucinate extra candidates.
+    assistant_reply = _normalize_markdown_text(
         _build_search_reply_from_screening(parsed.normalized_query, screening)
     )
-    assistant_reply = _compose_markdown_reply_with_llm(
-        client=client,
-        parsed_query=parsed.normalized_query,
-        screening=screening,
-        should_search=True,
-        guidance_text=fallback_reply,
-    ) or fallback_reply
 
     return JSONResponse(
         {
