@@ -11,7 +11,7 @@ from service.database import get_db
 import service.models as models
 import service.schemas as schemas
 
-# 在启动时自动在 MySQL 中创建表结构 (省去手动写 SQL 建表)
+# Automatically create table structure in MySQL on startup
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
@@ -20,26 +20,27 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# 配置 CORS 跨域，允许前端调用
+# Configure CORS cross-origin, allowing front-end calls
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # 比赛时为方便可设为"*"，生产环境建议指定前端域名
+    # Set to "*" for convenience during competition; production suggested to specify front-end domain
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# 注册路由
+# Register routes
 app.include_router(auth_router)
 app.include_router(account_router)
 app.include_router(ai_router)
 app.include_router(search_router)
 app.include_router(report_router)
 
-# 挂载静态文件
+# Mount static files
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-# 配置模板渲染
+# Configure template rendering
 templates = Jinja2Templates(directory="templates")
 
 

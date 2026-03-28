@@ -1,4 +1,4 @@
-/* 全局样式 */
+/* Global Styles */
 * {
     margin: 0;
     padding: 0;
@@ -12,14 +12,14 @@ body {
     line-height: 1.6;
 }
 
-/* 容器样式 */
+/* Container Style */
 .container {
     max-width: 1200px;
     margin: 0 auto;
     padding: 20px;
 }
 
-/* 头部导航 */
+/* Header Navigation */
 header {
     background-color: #ffffff;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
@@ -60,13 +60,13 @@ nav ul li a:hover {
     color: #3b82f6;
 }
 
-/* 主内容区域 */
+/* Main Content Area */
 main {
     min-height: 80vh;
     padding: 40px 0;
 }
 
-/* 英雄区域 */
+/* Hero Section */
 .hero {
     text-align: center;
     margin-bottom: 60px;
@@ -91,7 +91,7 @@ main {
     justify-content: center;
 }
 
-/* 特性区域 */
+/* Features Section */
 .features {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
@@ -123,7 +123,7 @@ main {
     color: #64748b;
 }
 
-/* 卡片样式 */
+/* Card Styles */
 .card {
     background-color: #ffffff;
     border-radius: 8px;
@@ -156,7 +156,7 @@ main {
     text-align: center;
 }
 
-/* 表单样式 */
+/* Form Styles */
 .form-group {
     margin-bottom: 20px;
 }
@@ -229,7 +229,7 @@ main {
     flex: 1;
 }
 
-/* 按钮样式 */
+/* Button Styles */
 .btn {
     padding: 12px 24px;
     border: none;
@@ -275,7 +275,7 @@ main {
     text-decoration: underline;
 }
 
-/* 链接样式 */
+/* Link Styles */
 a {
     color: #3b82f6;
     text-decoration: none;
@@ -285,7 +285,7 @@ a:hover {
     text-decoration: underline;
 }
 
-/* 用户信息样式 */
+/* User Info Styles */
 .user-info {
     display: flex;
     flex-direction: column;
@@ -317,14 +317,14 @@ a:hover {
     color: #f59e0b;
 }
 
-/* 信息文本 */
+/* Info Text */
 .info-text {
     color: #64748b;
     margin-bottom: 24px;
     line-height: 1.6;
 }
 
-/* 页脚样式 */
+/* Footer Style */
 footer {
     background-color: #ffffff;
     border-top: 1px solid #e2e8f0;
@@ -333,32 +333,32 @@ footer {
     color: #64748b;
 }
 
-/* 响应式设计 */
+/* Responsive Design */
 @media (max-width: 768px) {
     nav {
         flex-direction: column;
         gap: 12px;
         padding: 15px;
     }
-    
+
     nav ul {
         flex-wrap: wrap;
         justify-content: center;
     }
-    
+
     .hero h1 {
         font-size: 2rem;
     }
-    
+
     .hero-buttons {
         flex-direction: column;
         align-items: center;
     }
-    
+
     .features {
         grid-template-columns: 1fr;
     }
-    
+
     .card {
         margin: 0 16px;
     }

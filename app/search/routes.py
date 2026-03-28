@@ -20,5 +20,5 @@ async def search_submit(
     description: str = Form(...),
     image: UploadFile = File(...)
 ):
-    # 这里可以添加处理上传文件和搜索逻辑
+    # Logic to handle file uploads and search can be added here
     return templates.TemplateResponse("search/search.html", {"request": request, "success": True})
