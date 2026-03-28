@@ -2,6 +2,8 @@ import base64
 import json
 import os
 import re
+from urllib import request as urllib_request
+from urllib.error import URLError, HTTPError
 from io import BytesIO
 from typing import Any
 
@@ -9,8 +11,12 @@ from PIL import Image
 from zhipuai import ZhipuAI
 
 
+def _resolve_zhipu_key() -> str | None:
+    return os.getenv("ZHIPUAI_API_KEY") or os.getenv("zhipuAPI")
+
+
 def get_zhipu_client() -> ZhipuAI:
-    api_key = os.getenv("ZHIPUAI_API_KEY")
+    api_key = _resolve_zhipu_key()
     if not api_key:
         raise RuntimeError("ZHIPUAI_API_KEY is not set in environment")
     return ZhipuAI(api_key=api_key)
@@ -38,7 +44,8 @@ def build_prompt_from_image_and_text(image_b64: str | None, user_text: str | Non
         combined = base
 
     if image_b64:
-        combined = combined + "\n(Image attached; supplement features from the image.)"
+        combined = combined + \
+            "\n(Image attached; supplement features from the image.)"
 
     return combined
 
@@ -81,3 +88,62 @@ def normalize_markdown_text(text: str) -> str:
     normalized = normalized.replace("\\n", "\n")
     normalized = normalized.replace("\\t", "\t")
     return normalized
+
+
+def image_to_text_external_api(
+    image_b64: str,
+    user_text: str | None = None,
+    api_url: str | None = None,
+    api_key: str | None = None,
+    timeout_seconds: int = 20,
+) -> str | None:
+    """Call external image-to-text API and return text description.
+
+    Expected response JSON can be one of:
+    - {"text": "..."}
+    - {"description": "..."}
+    - {"result": "..."}
+    """
+    resolved_url = api_url or os.getenv("EXTERNAL_IMAGE2TEXT_URL")
+    if not resolved_url:
+        return None
+
+    resolved_key = api_key or os.getenv(
+        "EXTERNAL_IMAGE2TEXT_API_KEY") or _resolve_zhipu_key()
+    payload = {
+        "image_base64": image_b64,
+        "user_text": user_text or "",
+    }
+
+    headers = {
+        "Content-Type": "application/json",
+    }
+    if resolved_key:
+        headers["Authorization"] = f"Bearer {resolved_key}"
+
+    req = urllib_request.Request(
+        resolved_url,
+        data=json.dumps(payload).encode("utf-8"),
+        headers=headers,
+        method="POST",
+    )
+
+    try:
+        with urllib_request.urlopen(req, timeout=timeout_seconds) as resp:
+            body = resp.read().decode("utf-8", errors="ignore")
+    except (HTTPError, URLError, TimeoutError):
+        return None
+
+    try:
+        parsed = json.loads(body)
+    except Exception:
+        return None
+
+    if not isinstance(parsed, dict):
+        return None
+
+    for key in ("text", "description", "result"):
+        value = to_str(parsed.get(key))
+        if value:
+            return value
+    return None

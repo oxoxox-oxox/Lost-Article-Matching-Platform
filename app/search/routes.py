@@ -3,7 +3,7 @@ from fastapi import APIRouter, Request, UploadFile, File, Form, Depends, HTTPExc
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse, JSONResponse
 import json
-from zhipuai import ZhipuAI
+import os
 from service.database import get_db
 from sqlalchemy.orm import Session
 from service.models import Request as RequestModel, User
@@ -15,6 +15,7 @@ from service.ai_utils import (
     extract_json_object,
     to_str,
     normalize_markdown_text,
+    image_to_text_external_api,
 )
 from app.search.match import run_two_stage_screening
 from pydantic import BaseModel
@@ -92,58 +93,6 @@ def _build_search_reply_from_screening(parsed_query: str, screening: dict[str, A
     return "\n".join(lines)
 
 
-def _compose_markdown_reply_with_llm(
-    client: ZhipuAI,
-    parsed_query: str,
-    screening: dict[str, Any] | None,
-    should_search: bool,
-    guidance_text: str,
-) -> str | None:
-    """Generate user-facing markdown reply with strict formatting constraints."""
-    prompt = {
-        "parsed_query": parsed_query,
-        "should_search": should_search,
-        "guidance_text": guidance_text,
-        "screening": screening,
-    }
-
-    system_text = (
-        "You are a lost-and-found search assistant. "
-        "Reply in clean GitHub-flavored Markdown only. "
-        "Use concise sections and short bullet lists when useful. "
-        "Output requirements: "
-        "1) Start with heading '## Search Assistant Reply'; "
-        "2) If there are matches, include heading '### Top Matches' and a numbered list; "
-        "3) If no matches, include ###No Matches and in next line include heading '### Next Steps' with 3 actionable bullets; "
-        "4) Keep tone supportive and practical; "
-        "5) Do not output JSON or code fences."
-    )
-
-    try:
-        resp = client.chat.completions.create(
-            model="glm-4-flash",
-            messages=[
-                {"role": "system", "content": system_text},
-                {
-                    "role": "user",
-                    "content": json.dumps(prompt, ensure_ascii=False),
-                },
-            ],
-            temperature=0.3,
-            top_p=0.7,
-        )
-        text = resp.choices[0].message.content
-        if isinstance(text, list):
-            text = "\n".join(
-                [block.get("text", "")
-                 for block in text if isinstance(block, dict)]
-            )
-        text = normalize_markdown_text(to_str(text))
-        return text or None
-    except Exception:
-        return None
-
-
 def _normalize_history(history_raw: str | None) -> list[dict[str, str]]:
     if not history_raw:
         return []
@@ -165,6 +114,16 @@ def _normalize_history(history_raw: str | None) -> list[dict[str, str]]:
     return normalized
 
 
+def _build_refine_query_text(base_text: str, image_text: str | None) -> str:
+    merged = (base_text or "").strip()
+    image_part = (image_text or "").strip()
+    if not image_part:
+        return merged
+    if not merged:
+        return image_part
+    return f"{merged}\n[Image Evidence] {image_part}"
+
+
 @search_router.post("/chat")
 async def search_chat(
     request: Request,
@@ -173,7 +132,7 @@ async def search_chat(
     image: UploadFile | None = File(None),
     top_n: int = Form(8),
     coarse_top_k: int = Form(30),
-    min_coarse_score: float = Form(0.2),
+    min_coarse_score: float = Form(0.35),
     current_user: User = Depends(require_auth_user),
     db: Session = Depends(get_db),
 ):
@@ -253,16 +212,9 @@ async def search_chat(
         if parsed.follow_up_question:
             friendly_reply = f"{friendly_reply}\n\n{parsed.follow_up_question}"
         friendly_reply = normalize_markdown_text(friendly_reply)
-        markdown_reply = _compose_markdown_reply_with_llm(
-            client=client,
-            parsed_query=parsed.normalized_query,
-            screening=None,
-            should_search=False,
-            guidance_text=friendly_reply,
-        )
         return JSONResponse(
             {
-                "assistant_reply": markdown_reply or friendly_reply,
+                "assistant_reply": friendly_reply,
                 "parsed": parsed.model_dump(),
                 "screening": None,
             }
@@ -279,34 +231,43 @@ async def search_chat(
 
     image_vector = None
     image_filename = image.filename if image else None
+    image_prompt_text = None
     if image_b64:
         try:
-            vision_prompt = (
-                "Summarize the visible lost-item information into one concise retrieval text "
-                "with category, color, material, key features, and location clues."
+            image_prompt_text = image_to_text_external_api(
+                image_b64=image_b64,
+                user_text=parsed.normalized_query,
             )
-            vision_resp = client.chat.completions.create(
-                model="glm-4v-flash",
-                messages=[
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "text",
-                                "text": f"User query: {parsed.normalized_query}"},
-                            {"type": "text", "text": vision_prompt},
-                            {"type": "image_url", "image_url": {"url": image_b64}},
-                        ],
-                    }
-                ],
-                temperature=0.0,
-                top_p=0.7,
-            )
-            image_prompt_text = vision_resp.choices[0].message.content
-            if isinstance(image_prompt_text, list):
-                image_prompt_text = "\n".join(
-                    [block.get("text", "")
-                     for block in image_prompt_text if isinstance(block, dict)]
+            if not image_prompt_text:
+                # Fallback when external API is unavailable.
+                vision_prompt = (
+                    "Summarize the visible lost-item information into one concise retrieval text "
+                    "with category, color, material, key features, and location clues."
                 )
+                vision_resp = client.chat.completions.create(
+                    model="glm-4v-flash",
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "text",
+                                    "text": f"User query: {parsed.normalized_query}"},
+                                {"type": "text", "text": vision_prompt},
+                                {"type": "image_url", "image_url": {
+                                    "url": image_b64}},
+                            ],
+                        }
+                    ],
+                    temperature=0.0,
+                    top_p=0.7,
+                )
+                image_prompt_text = vision_resp.choices[0].message.content
+                if isinstance(image_prompt_text, list):
+                    image_prompt_text = "\n".join(
+                        [block.get("text", "")
+                         for block in image_prompt_text if isinstance(block, dict)]
+                    )
+
             image_prompt_text = to_str(
                 image_prompt_text) or parsed.normalized_query
 
@@ -335,14 +296,24 @@ async def search_chat(
         raise HTTPException(status_code=500, detail=f"db error: {e}")
 
     try:
+        refine_query_text = _build_refine_query_text(
+            parsed.normalized_query, image_prompt_text)
         screening = run_two_stage_screening(
             db=db,
             input_text_vector=text_vector,
             input_image_vector=image_vector,
-            query_description=parsed.normalized_query,
+            query_description=refine_query_text,
             top_n=max(1, min(top_n, 10)),
             coarse_top_k=max(10, min(coarse_top_k, 100)),
             min_coarse_score=min_coarse_score,
+            use_custom_refine=os.getenv(
+                "SEARCH_USE_CUSTOM_REFINE", "1") != "0",
+            use_local_refine=os.getenv(
+                "SEARCH_USE_LOCAL_REFINE", "1") != "0",
+            custom_refine_api_url=os.getenv("CUSTOM_REFINE_API_URL"),
+            custom_refine_api_key=os.getenv("CUSTOM_REFINE_API_KEY"),
+            custom_refine_timeout=int(
+                os.getenv("CUSTOM_REFINE_TIMEOUT", "20")),
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"screening error: {e}")
@@ -508,7 +479,7 @@ async def search_screen(
     image: UploadFile | None = File(None),
     top_n: int = Form(10),
     coarse_top_k: int = Form(30),
-    min_coarse_score: float = Form(0.2),
+    min_coarse_score: float = Form(0.35),
     current_user: User = Depends(require_auth_user),
     db: Session = Depends(get_db),
 ):
@@ -536,21 +507,26 @@ async def search_screen(
         try:
             body = await image.read()
             image_b64 = image_to_base64(body)
-            msg_content = [
-                {"type": "text", "text": f"User text: {text}"},
-                {"type": "text", "text": "Summarize the visible lost-item information from the image or description into a single lost-and-found text no longer than 256 characters. Include category, color, material, key distinguishing features, and scene/location. Strictly no more than 256 characters."},
-                {"type": "image_url", "image_url": {"url": image_b64}},
-            ]
-            vision_resp = client.chat.completions.create(
-                model="glm-4v-flash",
-                messages=[{"role": "user", "content": msg_content}],
-                top_p=0.7,
-                temperature=0.0,
+            image_prompt_text = image_to_text_external_api(
+                image_b64=image_b64,
+                user_text=text,
             )
-            image_prompt_text = vision_resp.choices[0].message.content
-            if isinstance(image_prompt_text, list):
-                image_prompt_text = "\n".join(
-                    [b.get('text', '') for b in image_prompt_text if isinstance(b, dict)])
+            if not image_prompt_text:
+                msg_content = [
+                    {"type": "text", "text": f"User text: {text}"},
+                    {"type": "text", "text": "Summarize the visible lost-item information from the image or description into a single lost-and-found text no longer than 256 characters. Include category, color, material, key distinguishing features, and scene/location. Strictly no more than 256 characters."},
+                    {"type": "image_url", "image_url": {"url": image_b64}},
+                ]
+                vision_resp = client.chat.completions.create(
+                    model="glm-4v-flash",
+                    messages=[{"role": "user", "content": msg_content}],
+                    top_p=0.7,
+                    temperature=0.0,
+                )
+                image_prompt_text = vision_resp.choices[0].message.content
+                if isinstance(image_prompt_text, list):
+                    image_prompt_text = "\n".join(
+                        [b.get('text', '') for b in image_prompt_text if isinstance(b, dict)])
             if not image_prompt_text:
                 image_prompt_text = text
 
@@ -562,14 +538,23 @@ async def search_screen(
                 status_code=500, detail=f"image embedding error: {e}")
 
     try:
+        refine_query_text = _build_refine_query_text(text, image_prompt_text)
         screening = run_two_stage_screening(
             db=db,
             input_text_vector=text_vector,
             input_image_vector=image_vector,
-            query_description=text,
+            query_description=refine_query_text,
             top_n=top_n,
             coarse_top_k=coarse_top_k,
             min_coarse_score=min_coarse_score,
+            use_custom_refine=os.getenv(
+                "SEARCH_USE_CUSTOM_REFINE", "1") != "0",
+            use_local_refine=os.getenv(
+                "SEARCH_USE_LOCAL_REFINE", "1") != "0",
+            custom_refine_api_url=os.getenv("CUSTOM_REFINE_API_URL"),
+            custom_refine_api_key=os.getenv("CUSTOM_REFINE_API_KEY"),
+            custom_refine_timeout=int(
+                os.getenv("CUSTOM_REFINE_TIMEOUT", "20")),
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"screening error: {e}")
