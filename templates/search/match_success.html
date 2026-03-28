@@ -1,0 +1,120 @@
+{% extends "index.html" %} {% block title %}Match Candidate - Lamp{% endblock %}
+{% block head %}
+<style>
+  .match-card {
+    max-width: 900px;
+    margin: 16px auto;
+    padding: 16px;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    background: #fff;
+  }
+  .match-image {
+    max-width: 100%;
+    height: auto;
+    border-radius: 6px;
+  }
+  .match-actions {
+    margin-top: 12px;
+  }
+  .btn {
+    padding: 10px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    border: none;
+  }
+  .btn-confirm {
+    background: #10b981;
+    color: #fff;
+  }
+  .btn-deny {
+    background: #ef4444;
+    color: #fff;
+    margin-left: 8px;
+  }
+  .meta {
+    margin-top: 8px;
+    color: #374151;
+  }
+  .note {
+    margin-top: 10px;
+    color: #6b7280;
+    font-size: 14px;
+  }
+</style>
+{% endblock %} {% block content %}
+<div class="match-card">
+  <h2>Possible Match</h2>
+  {% if report.image_data %}
+  <div>
+    <img
+      class="match-image"
+      src="/search/match/image/{{ token }}"
+      alt="Candidate image"
+    />
+  </div>
+  {% endif %}
+  <div class="meta">
+    <strong>Description:</strong>
+    <p>{{ report.description }}</p>
+  </div>
+  <div class="note">
+    Please carefully confirm whether this is the item you lost. If yes, we will
+    remove this found-item report so it is marked resolved. If not, you can
+    report a lost-item request from the failed flow.
+  </div>
+
+  <div class="match-actions">
+    <button id="confirmBtn" class="btn btn-confirm">Yes — this is mine</button>
+    <button id="denyBtn" class="btn btn-deny">No — not mine</button>
+  </div>
+
+  <div id="result" style="margin-top: 12px; display: none"></div>
+</div>
+{% endblock %} {% block scripts %}
+<script>
+  function getLoginToken(){return localStorage.getItem('token')||localStorage.getItem('access_token')||''}
+  async function ensureLogin(){const t=getLoginToken(); if(!t){window.location.href='/account/login'; return false;} return true}
+
+  const confirmBtn = document.getElementById('confirmBtn');
+  const denyBtn = document.getElementById('denyBtn');
+  const resultDiv = document.getElementById('result');
+
+  confirmBtn.addEventListener('click', async function(){
+      if(!await ensureLogin()) return;
+      confirmBtn.disabled = true; denyBtn.disabled = true;
+      const fd = new FormData();
+      fd.append('token', '{{ token }}');
+      fd.append('confirm', 'yes');
+      try{
+          const resp = await fetch('/search/match/confirm', { method:'POST', headers:{ 'Authorization': `Bearer ${getLoginToken()}` }, body: fd });
+          const data = await resp.json();
+          if(resp.ok && data.status==='deleted'){
+              resultDiv.style.display='block'; resultDiv.textContent='Match confirmed — report removed.'; resultDiv.style.color='#065f46';
+              setTimeout(()=>window.location.href='/search/',1500);
+          } else {
+              resultDiv.style.display='block'; resultDiv.textContent = data.detail || JSON.stringify(data);
+              resultDiv.style.color='#991b1b';
+          }
+      }catch(e){ resultDiv.style.display='block'; resultDiv.textContent = e.message; resultDiv.style.color='#991b1b'; }
+  });
+
+  denyBtn.addEventListener('click', async function(){
+      if(!await ensureLogin()) return;
+        const fd = new FormData();
+        fd.append('token', '{{ token }}');
+      fd.append('confirm', 'no');
+      try{
+          const resp = await fetch('/search/match/confirm', { method:'POST', headers:{ 'Authorization': `Bearer ${getLoginToken()}` }, body: fd });
+          const data = await resp.json();
+          if(data && data.redirect){
+              window.location.href = data.redirect;
+          } else {
+              // fallback: navigate to failed page with prefill
+            const enc = encodeURIComponent('{{ report.description|default('') }}');
+            window.location.href = '/search/match/failed?prefill_description=' + enc + '&token={{ token }}';
+          }
+      }catch(e){ resultDiv.style.display='block'; resultDiv.textContent = e.message; resultDiv.style.color='#991b1b'; }
+  });
+</script>
+{% endblock %}
