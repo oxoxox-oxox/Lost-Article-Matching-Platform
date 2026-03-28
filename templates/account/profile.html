@@ -21,7 +21,7 @@
 
 {% block scripts %}
 <script>
-    // 获取用户信息
+    // Fetch user information
     async function getUserInfo() {
         const token = localStorage.getItem('token');
         if (!token) {
@@ -50,34 +50,34 @@
         }
     }
     
-    // 显示用户信息
+    // Render user information
     function displayUserInfo(user) {
         const profileInfo = document.getElementById('profileInfo');
         profileInfo.innerHTML = `
             <div class="user-info">
                 <div class="info-item">
-                    <span class="label">Username：</span>
+                    <span class="label">Username:</span>
                     <span class="value">${user.username}</span>
                 </div>
                 <div class="info-item">
-                    <span class="label">Email：</span>
+                    <span class="label">Email:</span>
                     <span class="value">${user.email}</span>
                 </div>
                 <div class="info-item">
-                    <span class="label">Status：</span>
+                    <span class="label">Status:</span>
                     <span class="value ${user.is_active ? 'active' : 'inactive'}">${user.is_active ? 'Active' : 'Inactive'}</span>
                 </div>
             </div>
         `;
     }
     
-    // 退出登录
+    // Log out
     document.getElementById('logout-btn').addEventListener('click', function() {
         localStorage.removeItem('token');
         window.location.href = '/account/login';
     });
     
-    // 页面加载时获取用户信息
+    // Fetch user info on page load
     window.onload = getUserInfo;
 </script>
 {% endblock %}

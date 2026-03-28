@@ -1,11 +1,11 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI Chat</title>
-    <!-- Import marked.js library for markdown parsing -->
+    <!-- Include marked.js for Markdown rendering -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <style>
         body {
@@ -65,7 +65,7 @@
             background-color: #1976d2;
         }
 
-        /* 为markdown内容添加样式 */
+        /* Markdown content styling */
         .markdown-content {
             line-height: 1.6;
         }
@@ -121,7 +121,7 @@
     <div class="settings-container" style="margin-bottom: 10px;">
         <label style="display: flex; align-items: center; gap: 10px;">
             <input type="checkbox" id="reasoning-toggle">
-            <span>开启推理模式</span>
+            <span>Enable reasoning mode</span>
         </label>
     </div>
     <div class="input-container">
@@ -141,10 +141,10 @@
             messageDiv.className = `message ${isUser ? 'user-message' : 'ai-message'}`;
 
             if (isUser) {
-                // 用户消息直接显示文本
+                // Render plain text for user messages
                 messageDiv.textContent = content;
             } else {
-                // AI消息使用markdown解析
+                // Render AI messages as Markdown
                 const markdownDiv = document.createElement('div');
                 markdownDiv.className = 'markdown-content';
                 markdownDiv.innerHTML = marked.parse(content);
@@ -201,7 +201,7 @@
 
                     const chunk = decoder.decode(value, { stream: true });
                     aiResponse += chunk;
-                    // 实时解析markdown
+                    // Render Markdown in real time
                     markdownDiv.innerHTML = marked.parse(aiResponse);
                     chatContainer.scrollTop = chatContainer.scrollHeight;
                 }

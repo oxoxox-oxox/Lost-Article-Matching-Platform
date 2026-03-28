@@ -1,5 +1,6 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -8,50 +9,284 @@
     <link rel="stylesheet" href="/static/css/style.css?v=1.0.1">
     {% block head %}{% endblock %}
 </head>
+
 <body>
     <header>
         <nav>
             <div class="logo">Lost Article Matching Platform</div>
             <ul>
                 <li><a href="/">Home</a></li>
-                <li><a href="/ai/chat">Search</a></li>
-                <li><a href="#">Report</a></li>
+                <li><a href="/search">Search</a></li>
+                <li><a href="/report">Report</a></li>
                 <li><a href="/account">Profile</a></li>
             </ul>
         </nav>
     </header>
+
     <main>
         <div class="container">
             {% block content %}
-            <div class="hero">
-                <h1>Welcome to Lost Article Matching Platform</h1>
-                <p class="subtitle">Find lost articles quickly and easily</p>
+            <section class="home-hero">
+                <div class="hero-badge">Campus Lost-and-Found Hub</div>
+                <h1>Reconnect People With What Matters Most</h1>
+                <p class="subtitle">LAMP helps students and staff report found items, submit loss requests, and complete
+                    returns faster with clearer matching.</p>
                 <div class="hero-buttons">
-                    <a href="/search" class="btn btn-primary">Search</a>
-                    <a href="/report" class="btn btn-secondary">Report</a>
+                    <a href="/search" class="btn btn-primary">Start a Search</a>
+                    <a href="/report" class="btn btn-secondary">Report a Found Item</a>
                 </div>
-            </div>
-            <div class="features">
-                <div class="feature">
-                    <h3>安全认证</h3>
-                    <p>使用 JWT 令牌进行安全认证，保护用户数据</p>
+                <div class="hero-metrics">
+                    <div class="metric-card">
+                        <span class="metric-label">For Owners</span>
+                        <strong>Submit detailed loss requests</strong>
+                    </div>
+                    <div class="metric-card">
+                        <span class="metric-label">For Finders</span>
+                        <strong>Post clear records with photo and location</strong>
+                    </div>
+                    <div class="metric-card">
+                        <span class="metric-label">For Campus Teams</span>
+                        <strong>Track and close return cases efficiently</strong>
+                    </div>
                 </div>
-                <div class="feature">
-                    <h3>防机器人</h3>
-                    <p>内置蜜罐和速率限制，有效防止恶意攻击</p>
+            </section>
+
+            <section class="section-head">
+                <h2>What You Can Do</h2>
+                <p>Choose your role to see the workflow that fits your situation.</p>
+            </section>
+
+            <section class="role-switcher" aria-label="Role based feature switcher">
+                <div class="role-toggle" role="tablist" aria-label="Select user role for features">
+                    <button class="role-tab is-active" id="features-lost-tab" role="tab" aria-selected="true"
+                        aria-controls="features-lost-panel" data-target="features-lost-panel">
+                        I Lost an Item
+                    </button>
+                    <button class="role-tab" id="features-found-tab" role="tab" aria-selected="false"
+                        aria-controls="features-found-panel" data-target="features-found-panel">
+                        I Found an Item
+                    </button>
                 </div>
-                <div class="feature">
-                    <h3>用户管理</h3>
-                    <p>完整的用户注册、登录和个人资料管理功能</p>
+
+                <div class="role-panels">
+                    <div class="role-panel is-active" id="features-lost-panel" role="tabpanel"
+                        aria-labelledby="features-lost-tab">
+                        <div class="role-table-wrap">
+                            <table class="role-table">
+                                <thead>
+                                    <tr>
+                                        <th>Goal</th>
+                                        <th>What You Do</th>
+                                        <th>Result</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td>Open a case</td>
+                                        <td>Create your account and keep your profile updated.</td>
+                                        <td>Your requests stay traceable and organized.</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Describe the lost item</td>
+                                        <td>Submit description and image with clear identifying details.</td>
+                                        <td>Higher matching precision and fewer false candidates.</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Review matches</td>
+                                        <td>Check suggested found-item records and compare details.</td>
+                                        <td>Faster shortlist of likely matches.</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Complete return</td>
+                                        <td>Confirm the match and coordinate pickup safely.</td>
+                                        <td>Case is closed after successful recovery.</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="role-panel" id="features-found-panel" role="tabpanel"
+                        aria-labelledby="features-found-tab" hidden>
+                        <div class="role-table-wrap">
+                            <table class="role-table">
+                                <thead>
+                                    <tr>
+                                        <th>Goal</th>
+                                        <th>What You Do</th>
+                                        <th>Result</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td>Create a record</td>
+                                        <td>Post clear photos and recognizable item features.</td>
+                                        <td>Owners can identify candidates faster.</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Add context</td>
+                                        <td>Provide discovery time and location information.</td>
+                                        <td>Matching confidence improves significantly.</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Support verification</td>
+                                        <td>Keep report details structured and specific.</td>
+                                        <td>Less back-and-forth, quicker confirmation.</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Close the case</td>
+                                        <td>Follow status updates until ownership is confirmed.</td>
+                                        <td>The item is returned and the case is completed.</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
                 </div>
-            </div>
+            </section>
+
+            <section class="section-head section-head-left">
+                <h2>How It Works</h2>
+                <p>Switch roles to see the step-by-step path in table format.</p>
+            </section>
+
+            <section class="role-switcher" aria-label="Role based workflow switcher">
+                <div class="role-toggle" role="tablist" aria-label="Select user role for workflow">
+                    <button class="role-tab is-active" id="workflow-lost-tab" role="tab" aria-selected="true"
+                        aria-controls="workflow-lost-panel" data-target="workflow-lost-panel">
+                        I Lost an Item
+                    </button>
+                    <button class="role-tab" id="workflow-found-tab" role="tab" aria-selected="false"
+                        aria-controls="workflow-found-panel" data-target="workflow-found-panel">
+                        I Found an Item
+                    </button>
+                </div>
+
+                <div class="role-panels">
+                    <div class="role-panel is-active" id="workflow-lost-panel" role="tabpanel"
+                        aria-labelledby="workflow-lost-tab">
+                        <div class="role-table-wrap">
+                            <table class="role-table">
+                                <thead>
+                                    <tr>
+                                        <th>Step</th>
+                                        <th>Your Action</th>
+                                        <th>Platform Support</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td>1. Sign in</td>
+                                        <td>Log in and open a new loss request.</td>
+                                        <td>Keeps your case tied to your profile.</td>
+                                    </tr>
+                                    <tr>
+                                        <td>2. Submit details</td>
+                                        <td>Upload item image and provide descriptive information.</td>
+                                        <td>Uses details to improve candidate matching.</td>
+                                    </tr>
+                                    <tr>
+                                        <td>3. Compare candidates</td>
+                                        <td>Review recommended found-item records.</td>
+                                        <td>Surfaces likely matches first.</td>
+                                    </tr>
+                                    <tr>
+                                        <td>4. Verify</td>
+                                        <td>Confirm ownership against report details.</td>
+                                        <td>Supports safer and clearer handoff.</td>
+                                    </tr>
+                                    <tr>
+                                        <td>5. Recover</td>
+                                        <td>Arrange pickup and complete the process.</td>
+                                        <td>Marks the case as resolved.</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="role-panel" id="workflow-found-panel" role="tabpanel"
+                        aria-labelledby="workflow-found-tab" hidden>
+                        <div class="role-table-wrap">
+                            <table class="role-table">
+                                <thead>
+                                    <tr>
+                                        <th>Step</th>
+                                        <th>Your Action</th>
+                                        <th>Platform Support</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td>1. Sign in</td>
+                                        <td>Access your account and open a found-item report.</td>
+                                        <td>Associates the report with your profile.</td>
+                                    </tr>
+                                    <tr>
+                                        <td>2. Post record</td>
+                                        <td>Upload photos with location and discovery time.</td>
+                                        <td>Builds a complete record for matching.</td>
+                                    </tr>
+                                    <tr>
+                                        <td>3. Receive potential claims</td>
+                                        <td>Check requests that align with your report.</td>
+                                        <td>Highlights likely owner requests.</td>
+                                    </tr>
+                                    <tr>
+                                        <td>4. Confirm claimant</td>
+                                        <td>Validate ownership details before handoff.</td>
+                                        <td>Helps prevent incorrect returns.</td>
+                                    </tr>
+                                    <tr>
+                                        <td>5. Return item</td>
+                                        <td>Coordinate return and close the report.</td>
+                                        <td>Updates status to completed.</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </section>
+            <script>
+                (function () {
+                    const switchers = document.querySelectorAll('.role-switcher');
+
+                    switchers.forEach((switcher) => {
+                        const tabs = switcher.querySelectorAll('.role-tab');
+                        const panels = switcher.querySelectorAll('.role-panel');
+
+                        function activatePanel(targetId) {
+                            tabs.forEach((tab) => {
+                                const isActive = tab.dataset.target === targetId;
+                                tab.classList.toggle('is-active', isActive);
+                                tab.setAttribute('aria-selected', String(isActive));
+                            });
+
+                            panels.forEach((panel) => {
+                                const isActive = panel.id === targetId;
+                                panel.classList.toggle('is-active', isActive);
+                                panel.hidden = !isActive;
+                            });
+                        }
+
+                        tabs.forEach((tab) => {
+                            tab.addEventListener('click', function () {
+                                activatePanel(this.dataset.target);
+                            });
+                        });
+                    });
+                })();
+            </script>
             {% endblock %}
         </div>
     </main>
+
     <footer>
         <p>&copy; 2026 Lost Article Matching Platform</p>
     </footer>
     <script src="/static/js/main.js"></script>
     {% block scripts %}{% endblock %}
 </body>
+
 </html>

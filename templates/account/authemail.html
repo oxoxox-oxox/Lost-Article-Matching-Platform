@@ -32,13 +32,13 @@
 
 {% block scripts %}
 <script>
-    // 获取URL参数中的邮箱
+    // Get email from URL query parameter
     function getUrlParam(name) {
         const urlParams = new URLSearchParams(window.location.search);
         return urlParams.get(name);
     }
     
-    // 页面加载时设置邮箱
+    // Populate email on page load
     window.onload = function() {
         const email = getUrlParam('email');
         if (email) {
@@ -46,7 +46,7 @@
         }
     };
     
-    // 重新发送验证码
+    // Resend verification code
     document.getElementById('resend-btn').addEventListener('click', async function() {
         const email = document.getElementById('email').value;
         
@@ -71,7 +71,7 @@
         }
     });
     
-    // 验证验证码
+    // Verify the code
     document.getElementById('verifyForm').addEventListener('submit', async function(e) {
         e.preventDefault();
         
