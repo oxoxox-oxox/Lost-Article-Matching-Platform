@@ -299,6 +299,7 @@ async def report_embed_image(
             if not record.user_id:
                 record.user_id = current_user.id
             record.image = image.filename if image else record.image
+            record.image_data = image_b64 if image_b64 else record.image_data
             record.features_img = json.dumps(vector)
             if not record.description:
                 record.description = description or text_out
@@ -306,6 +307,7 @@ async def report_embed_image(
             record = Report(
                 user_id=current_user.id,
                 image=(image.filename if image else None),
+                image_data=image_b64,
                 description=(description or text_out),
                 features_img=json.dumps(vector),
             )

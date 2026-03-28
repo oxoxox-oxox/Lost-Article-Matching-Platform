@@ -505,41 +505,142 @@
         return Number.isFinite(n) ? n : fallback;
     }
 
-    function detectSearchOutcome(data) {
-        const shouldSearch = Boolean(data?.parsed?.should_search);
-        if (!shouldSearch) {
-            return null;
-        }
+    function escapeHtml(text) {
+        const str = String(text ?? '');
+        return str
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
 
+    function buildMatchActionButtons(matches, requestId) {
+        const candidateTokens = matches
+            .map((m) => m?.token)
+            .filter((t) => typeof t === 'string' && t.length > 0);
+        const encodedCandidates = encodeURIComponent(candidateTokens.join(','));
+
+        return matches.map((item, idx) => {
+            const id = item?.id ?? `candidate-${idx + 1}`;
+            const score = toNumber(item?.final_score ?? item?.score, 0);
+            const label = item?.refine_label ? String(item.refine_label).toUpperCase() : 'MATCH';
+            let redirectUrl = item?.success_url || `${OUTCOME_REDIRECTS.matched}?candidate_id=${encodeURIComponent(id)}&request_id=${encodeURIComponent(requestId || '')}`;
+
+            // Preserve candidate context so the detail page can jump to the next object on deny.
+            if (item?.success_url && candidateTokens.length > 0) {
+                redirectUrl = `${item.success_url}?candidates=${encodedCandidates}&idx=${idx}`;
+            }
+
+            return `
+                <button type="button" class="modal-action-btn" data-modal-jump="${escapeHtml(redirectUrl)}">
+                    Candidate #${escapeHtml(id)}
+                    <span class="meta">score: ${escapeHtml(score.toFixed(2))} | label: ${escapeHtml(label)}</span>
+                </button>
+            `;
+        }).join('');
+    }
+
+    function buildAssistantReplyFromScreening(data) {
         const screening = data?.screening || {};
         const matches = Array.isArray(screening.matches) ? screening.matches : [];
         const summary = screening.summary || {};
+        const kept = toNumber(summary.refine_kept, matches.length);
         const coarsePass = toNumber(summary.coarse_pass, 0);
-        const topScore = matches.length > 0
-            ? toNumber(matches[0].final_score ?? matches[0].score, 0)
-            : 0;
 
-        if (matches.length > 0 && topScore >= 0.72) {
+        if (!matches.length) {
+            return [
+                '## Search Result',
+                '',
+                'No high-confidence match was found for now.',
+                '',
+                '### Next Suggestions',
+                '- Add clearer item identifiers (brand, color, marks, stickers).',
+                '- Provide specific time and location details.',
+                '- Try uploading a clearer image for better retrieval.'
+            ].join('\n');
+        }
+
+        const lines = [
+            '## Search Result',
+            '',
+            `I found **${kept}** potential match(es).`,
+            `Initial screening passed **${coarsePass}** candidate(s).`,
+            '',
+            '### Top Candidates'
+        ];
+
+        matches.slice(0, 5).forEach((item, idx) => {
+            const score = toNumber(item?.final_score ?? item?.score, 0);
+            const label = item?.refine_label || 'maybe';
+            const desc = String(item?.description || '').slice(0, 120);
+            lines.push(`${idx + 1}. **Candidate #${item?.id ?? idx + 1}** | confidence: \`${score.toFixed(2)}\` | label: \`${label}\`  `);
+            lines.push(desc || 'No description available.');
+        });
+
+        return lines.join('\n');
+    }
+
+    function detectSearchOutcome(data) {
+        const screening = data?.screening || {};
+        const hasScreening = typeof screening === 'object' && screening !== null;
+        if (!hasScreening) {
+            return null;
+        }
+
+        const matches = Array.isArray(screening.matches) ? screening.matches : [];
+        const requestId = data?.request_id || '';
+        const failedUrlFromApi = data?.outcome?.failed_url;
+
+        if (matches.length > 0) {
+            const actionButtons = buildMatchActionButtons(matches, requestId);
             return {
                 title: 'Potential Match Found',
                 type: 'success',
-                buttonText: 'View Match Details',
-                redirectUrl: data?.next_page_url || OUTCOME_REDIRECTS.matched,
-                html: '<p class="modal-intro">Great news. We found a high-confidence candidate for your item. You can continue to the next page for confirmation details.</p>'
+                buttonText: 'Close',
+                html: `
+                    <p class="modal-intro">We found <strong>${matches.length}</strong> candidate match(es). Choose one item below to continue.</p>
+                    <div class="modal-action-grid">${actionButtons}</div>
+                `
             };
         }
 
-        if (matches.length === 0 && coarsePass === 0) {
+        if (matches.length === 0) {
+            const fallbackUrl = failedUrlFromApi || `${OUTCOME_REDIRECTS.impossible}?request_id=${encodeURIComponent(requestId)}`;
             return {
                 title: 'No Likely Match Right Now',
                 type: 'warning',
-                buttonText: 'Go To Next Step',
-                redirectUrl: data?.next_page_url || OUTCOME_REDIRECTS.impossible,
-                html: '<p class="modal-intro">At this stage, the system considers a match unlikely. Continue to the next page for fallback options and follow-up actions.</p>'
+                buttonText: 'Close',
+                html: `
+                    <p class="modal-intro">No candidate is currently available for this request. Continue to the next page for fallback actions.</p>
+                    <div class="modal-action-grid">
+                        <button type="button" class="modal-action-btn" data-modal-jump="${escapeHtml(fallbackUrl)}">
+                            Go To Next Step
+                            <span class="meta">Manual follow-up and retry options</span>
+                        </button>
+                    </div>
+                `
             };
         }
 
         return null;
+    }
+
+    function bindOutcomeModalJumpActions() {
+        const body = document.getElementById('appModalBody');
+        if (!body) {
+            return;
+        }
+
+        const jumpButtons = body.querySelectorAll('[data-modal-jump]');
+        jumpButtons.forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const url = btn.getAttribute('data-modal-jump');
+                if (url) {
+                    window.location.href = url;
+                }
+            }, { once: true });
+        });
     }
 
     async function showOutcomeModal(outcome) {
@@ -547,18 +648,15 @@
             return;
         }
 
-        const action = await window.showAppModal({
+        window.showAppModal({
             title: outcome.title,
             html: outcome.html,
             type: outcome.type,
             okText: outcome.buttonText,
-            okClass: 'app-modal-btn-cta',
+            okClass: 'app-modal-btn-secondary',
             showCancel: false
         });
-
-        if (action === 'ok' && outcome.redirectUrl) {
-            window.location.href = outcome.redirectUrl;
-        }
+        bindOutcomeModalJumpActions();
     }
 
     async function sendMessage() {
@@ -582,13 +680,15 @@
 
         try {
             const form = new FormData();
-            form.append('message', message || 'Please analyze this image and help me search.');
-            form.append('history', JSON.stringify(chatHistory.slice(-8)));
+            form.append('text', message || 'Please analyze this image and help me search.');
             if (selectedImage) {
                 form.append('image', selectedImage);
             }
+            form.append('top_n', '8');
+            form.append('coarse_top_k', '30');
+            form.append('min_coarse_score', '0.2');
 
-            const resp = await fetch('/search/chat', {
+            const resp = await fetch('/search/screen', {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${getLoginToken()}`
@@ -601,7 +701,7 @@
                 throw new Error(data.detail || 'Search assistant request failed');
             }
 
-            const reply = data.assistant_reply || 'I have processed your request.';
+            const reply = buildAssistantReplyFromScreening(data);
             appendMessage('assistant', reply, data);
             chatHistory.push({ role: 'assistant', content: reply });
 

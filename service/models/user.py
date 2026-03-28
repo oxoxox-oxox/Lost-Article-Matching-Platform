@@ -27,6 +27,7 @@ class Report(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     image = Column(String(255), nullable=True)
+    image_data = Column(Text, nullable=True)
     description = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     status = Column(Boolean, default=False)

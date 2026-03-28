@@ -343,6 +343,24 @@ async def search_screen(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"screening error: {e}")
 
+    # Attach tokenized success URLs for each candidate to support match confirmation flow.
+    matches = screening.get("matches") if isinstance(screening, dict) else None
+    if isinstance(matches, list):
+        for item in matches:
+            if not isinstance(item, dict):
+                continue
+            item_id = item.get("id")
+            try:
+                token = _encode_id_to_token(int(item_id))
+                item["token"] = token
+                item["success_url"] = f"/search/match/success/{token}"
+            except Exception:
+                item["token"] = None
+                item["success_url"] = None
+
+    prefill_text = base64.b64encode(text.encode("utf-8")).decode("ascii")
+    failed_url = f"/search/match/failed?prefill_description={prefill_text}"
+
     return JSONResponse({
         "query": {
             "has_image": bool(image),
@@ -350,6 +368,10 @@ async def search_screen(
             "image_prompt_text": image_prompt_text,
         },
         "screening": screening,
+        "outcome": {
+            "matched_count": len(matches) if isinstance(matches, list) else 0,
+            "failed_url": failed_url,
+        }
     })
 
 
@@ -384,6 +406,7 @@ async def match_confirm(
     request: Request,
     token: str = Form(...),
     confirm: str = Form(...),
+    next_url: str | None = Form(None),
     current_user: User = Depends(_require_auth_user),
     db: Session = Depends(get_db),
 ):
@@ -402,7 +425,13 @@ async def match_confirm(
                 status_code=500, detail=f"db delete error: {e}")
         return JSONResponse({"status": "deleted", "id": report_id})
 
-    # not confirmed -> instruct client to open failed page with prefilled description
+    # not confirmed -> prefer safe next candidate URL if provided by frontend
+    if isinstance(next_url, str):
+        candidate = next_url.strip()
+        if candidate.startswith('/search/match/success/') or candidate.startswith('/search/'):
+            return JSONResponse({"status": "denied", "redirect": candidate})
+
+    # fallback to failed page with prefilled description
     prefill = (record.description or "")
     redirect_url = f"/search/match/failed?prefill_description={base64.b64encode(prefill.encode('utf-8')).decode('ascii')}"
     # include the token so the client can't guess IDs easily
