@@ -64,6 +64,7 @@ Users who find an item can upload photos and details. Users who lose an item can
 
 - Python 3.9 or later
 - MySQL 8.0 or later
+- Docker Desktop 
 
 ## Installation
 
@@ -116,6 +117,7 @@ Notes:
 - OPENAI_API_KEY is used by the AI chat module.
 - ZHIPUAI_API_KEY is used for multimodal summary and embedding generation in report/search workflows.
 - MATCH_NOTIFY_THRESHOLD controls when automatic match notification emails are sent.
+- For Docker Compose, `DATABASE_URL` is injected automatically and points to the `db` service.
 
 ## Run the Project
 
@@ -132,6 +134,38 @@ Then open:
 Alternative:
 
 - Running python main.py starts Uvicorn on port 80 as defined in main.py.
+
+## Run with Docker
+
+1. (Optional) Keep your existing `.env` and set business/API keys there, such as `OPENAI_API_KEY`, `ZHIPUAI_API_KEY`, and email settings.
+
+1. Build and start services:
+
+```bash
+docker compose up -d --build
+```
+
+1. Open the app:
+
+- <http://127.0.0.1:8000/>
+
+Useful commands:
+
+```bash
+# View logs
+docker compose logs -f app
+
+# Stop all services
+docker compose down
+
+# Stop and remove DB volume (clears data)
+docker compose down -v
+```
+
+Default ports:
+
+- App: `8000` (host) -> `8000` (container)
+- MySQL: `3307` (host) -> `3306` (container)
 
 ## Development Notes
 

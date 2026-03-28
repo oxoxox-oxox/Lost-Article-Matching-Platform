@@ -1,0 +1,48 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: lamp-app
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: mysql+pymysql://${MYSQL_USER:-lamp}:${MYSQL_PASSWORD:-lamp_password}@db:3306/${MYSQL_DATABASE:-lamp}
+      SECRET_KEY: ${SECRET_KEY:-change_this_secret_key}
+      ALGORITHM: ${ALGORITHM:-HS256}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-30}
+      SMTP_SERVER: ${SMTP_SERVER:-smtp.163.com}
+      SMTP_PORT: ${SMTP_PORT:-465}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SENDER_EMAIL: ${SENDER_EMAIL:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ZHIPUAI_API_KEY: ${ZHIPUAI_API_KEY:-}
+      MATCH_NOTIFY_THRESHOLD: ${MATCH_NOTIFY_THRESHOLD:-0.80}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  db:
+    image: mysql:8.0
+    container_name: lamp-db
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root_password}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-lamp}
+      MYSQL_USER: ${MYSQL_USER:-lamp}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-lamp_password}
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: [ "CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u$${MYSQL_USER} -p$${MYSQL_PASSWORD} --silent" ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+    restart: unless-stopped
+
+volumes:
+  mysql_data:
