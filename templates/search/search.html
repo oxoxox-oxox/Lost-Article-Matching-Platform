@@ -136,12 +136,15 @@
     async function ensureLoggedInOrRedirect() {
         const token = getLoginToken();
         if (!token) {
-            await window.showAppModal({
+            const action = await window.showAppModal({
                 title: 'Login Required',
                 message: 'Please log in with email first.',
-                type: 'warning'
+                type: 'warning',
+                okText: 'Go to Login',
+                cancelText: 'Back to Home',
+                showCancel: true
             });
-            window.location.href = '/';
+            window.location.href = action === 'ok' ? '/account/login' : '/';
             return false;
         }
         try {
@@ -150,22 +153,28 @@
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             if (!resp.ok) {
-                await window.showAppModal({
+                const action = await window.showAppModal({
                     title: 'Login Required',
                     message: 'Please log in with email first.',
-                    type: 'warning'
+                    type: 'warning',
+                    okText: 'Go to Login',
+                    cancelText: 'Back to Home',
+                    showCancel: true
                 });
-                window.location.href = '/';
+                window.location.href = action === 'ok' ? '/account/login' : '/';
                 return false;
             }
             return true;
         } catch (e) {
-            await window.showAppModal({
+            const action = await window.showAppModal({
                 title: 'Login Required',
                 message: 'Please log in with email first.',
-                type: 'warning'
+                type: 'warning',
+                okText: 'Go to Login',
+                cancelText: 'Back to Home',
+                showCancel: true
             });
-            window.location.href = '/';
+            window.location.href = action === 'ok' ? '/account/login' : '/';
             return false;
         }
     }

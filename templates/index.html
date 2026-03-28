@@ -156,6 +156,11 @@
             background: linear-gradient(135deg, #0ea5e9 0%, #2563eb 100%);
         }
 
+        .app-modal-btn-secondary {
+            color: #334155;
+            background: #e2e8f0;
+        }
+
         .app-modal-btn:hover {
             filter: brightness(0.96);
         }
@@ -471,6 +476,8 @@
             <div id="appModalTitle" class="app-modal-header">Notice</div>
             <div id="appModalBody" class="app-modal-body"></div>
             <div class="app-modal-footer">
+                <button id="appModalCancel" class="app-modal-btn app-modal-btn-secondary" type="button"
+                    style="display:none;">Cancel</button>
                 <button id="appModalOk" class="app-modal-btn" type="button">OK</button>
             </div>
         </div>
@@ -482,23 +489,25 @@
             const dialog = document.getElementById('appModal');
             const titleEl = document.getElementById('appModalTitle');
             const bodyEl = document.getElementById('appModalBody');
+            const cancelBtn = document.getElementById('appModalCancel');
             const okBtn = document.getElementById('appModalOk');
             let resolver = null;
 
-            function closeModal() {
+            function closeModal(action = 'ok') {
                 overlay.classList.remove('is-open');
                 overlay.setAttribute('aria-hidden', 'true');
                 if (resolver) {
                     const fn = resolver;
                     resolver = null;
-                    fn(true);
+                    fn(action);
                 }
             }
 
-            okBtn.addEventListener('click', closeModal);
+            okBtn.addEventListener('click', function () { closeModal('ok'); });
+            cancelBtn.addEventListener('click', function () { closeModal('cancel'); });
             overlay.addEventListener('click', function (e) {
                 if (e.target === overlay) {
-                    closeModal();
+                    closeModal('dismiss');
                 }
             });
 
@@ -507,7 +516,9 @@
                 message = '',
                 html = '',
                 type = 'default',
-                okText = 'OK'
+                okText = 'OK',
+                cancelText = 'Cancel',
+                showCancel = false
             } = {}) {
                 dialog.classList.remove('app-modal-success', 'app-modal-warning', 'app-modal-error');
                 if (type === 'success') dialog.classList.add('app-modal-success');
@@ -521,6 +532,8 @@
                     bodyEl.textContent = message;
                 }
                 okBtn.textContent = okText;
+                cancelBtn.textContent = cancelText;
+                cancelBtn.style.display = showCancel ? 'inline-block' : 'none';
 
                 overlay.classList.add('is-open');
                 overlay.setAttribute('aria-hidden', 'false');
@@ -559,12 +572,15 @@
                 const ok = await isLoggedIn();
                 if (!ok) {
                     e.preventDefault();
-                    await window.showAppModal({
+                    const action = await window.showAppModal({
                         title: 'Login Required',
                         message: 'Please log in with email first.',
-                        type: 'warning'
+                        type: 'warning',
+                        okText: 'Go to Login',
+                        cancelText: 'Back to Home',
+                        showCancel: true
                     });
-                    window.location.href = '/';
+                    window.location.href = action === 'ok' ? '/account/login' : '/';
                     return;
                 }
                 window.location.href = link.getAttribute('href');
