@@ -60,5 +60,21 @@ async def authemail_page(request: Request, email: str = Query(None)):
 
 
 @account_router.get("/profile", response_class=HTMLResponse)
-async def profile_page(request: Request):
+async def profile_page(request: Request, db: Session = Depends(get_db)):
+    # Try to read token from cookie or Authorization header; do not force redirect.
+    token = request.cookies.get("token") or request.headers.get("Authorization", "").replace("Bearer ", "")
+
+    if token:
+        try:
+            payload = security.decode_access_token(token)
+            email = payload.get("sub")
+            if email:
+                user = db.query(models.User).filter(models.User.email == email).first()
+                if user:
+                    return templates.TemplateResponse(request, "account/profile.html", {"request": request, "user": user})
+        except:
+            # Fall through to render page without server-side user
+            pass
+
+    # No valid token: render the profile page; client-side JS will call `/auth/me`.
     return templates.TemplateResponse(request, "account/profile.html", {"request": request})
