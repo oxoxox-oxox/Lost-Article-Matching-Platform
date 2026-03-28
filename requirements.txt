@@ -13,3 +13,4 @@ python-multipart
 openai
 zhipuai
 numpy
+scipy
