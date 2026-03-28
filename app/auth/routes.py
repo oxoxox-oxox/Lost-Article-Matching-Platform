@@ -208,7 +208,7 @@ def check_username(
     db: Session = Depends(database.get_db)
 ):
     user = crud.get_user_by_username(db, username=username)
-    return {"exists": user is not None}
+    return {"exists": user and user.is_active}  # 只有已激活的账户才算占用
 
 
 @auth_router.get("/check-email")
@@ -217,4 +217,5 @@ def check_email(
     db: Session = Depends(database.get_db)
 ):
     user = crud.get_user_by_email(db, email=email)
-    return {"exists": user is not None}
+    # Only activated accounts are treated as occupied for registration checks.
+    return {"exists": bool(user and user.is_active)}

@@ -8,7 +8,8 @@
         <h2>Email Verification</h2>
     </div>
     <div class="card-body">
-        <p class="info-text">We have sent a verification code to your email. Please enter the code to complete the registration.</p>
+        <p class="info-text">We have sent a verification code to your email. Please enter the code to complete the
+            registration.</p>
         <form id="verifyForm">
             <div class="form-group">
                 <label for="email">Email</label>
@@ -17,15 +18,15 @@
             <div class="form-group">
                 <label for="code">Verification Code</label>
                 <div class="code-input-group">
-                    <input type="text" id="code" name="code" required placeholder="Enter verification code">    
+                    <input type="text" id="code" name="code" required placeholder="Enter verification code">
                     <button type="button" class="btn btn-secondary" id="resend-btn">Resend Code</button>
                 </div>
             </div>
-            <button type="submit" class="btn btn-primary">Verify</button>   
+            <button type="submit" class="btn btn-primary">Verify</button>
         </form>
     </div>
     <div class="card-footer">
-        <p>Login<a<a href="/account/login">Login</a></p>
+        <a href="/account/login">Login</a>
     </div>
 </div>
 {% endblock %}
@@ -37,19 +38,19 @@
         const urlParams = new URLSearchParams(window.location.search);
         return urlParams.get(name);
     }
-    
+
     // Populate email on page load
-    window.onload = function() {
+    window.onload = function () {
         const email = getUrlParam('email');
         if (email) {
             document.getElementById('email').value = email;
         }
     };
-    
+
     // Resend verification code
-    document.getElementById('resend-btn').addEventListener('click', async function() {
+    document.getElementById('resend-btn').addEventListener('click', async function () {
         const email = document.getElementById('email').value;
-        
+
         try {
             const response = await fetch('/auth/resend-code', {
                 method: 'POST',
@@ -58,7 +59,7 @@
                 },
                 body: JSON.stringify({ email })
             });
-            
+
             if (response.ok) {
                 msg('Verification code resent successfully');
             } else {
@@ -67,19 +68,19 @@
             }
         } catch (error) {
             console.error('Resend code failed:', error);
-            msg('Resend code failed');    
+            msg('Resend code failed');
         }
     });
-    
+
     // Verify the code
-    document.getElementById('verifyForm').addEventListener('submit', async function(e) {
+    document.getElementById('verifyForm').addEventListener('submit', async function (e) {
         e.preventDefault();
-        
+
         const formData = {
             email: document.getElementById('email').value,
             code: document.getElementById('code').value
         };
-        
+
         try {
             const response = await fetch('/auth/verify-code', {
                 method: 'POST',
@@ -88,7 +89,7 @@
                 },
                 body: JSON.stringify(formData)
             });
-            
+
             if (response.ok) {
                 msg('Verification successful, account activated');
                 window.location.href = '/account/login';
