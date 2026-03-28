@@ -1,5 +1,5 @@
-{% extends "index.html" %} {% block title %}User Profile{% endblock %}
-{% block head %}
+{% extends "index.html" %} {% block title %}User Profile{% endblock %} {% block
+head %}
 <style>
   .profile-actions {
     display: flex;
@@ -25,7 +25,30 @@
   </div>
   <div class="card-body">
     <div id="profileInfo">
+      {% if user %}
+      <div class="user-info">
+        <div class="info-item">
+          <span class="label">Username:</span>
+          <span class="value">{{ user.username }}</span>
+        </div>
+        <div class="info-item">
+          <span class="label">Email:</span>
+          <span class="value">{{ user.email }}</span>
+        </div>
+        <div class="info-item">
+          <span class="label">Points:</span>
+          <span class="value">{{ user.point }}</span>
+        </div>
+        <div class="info-item">
+          <span class="label">Status:</span>
+          <span class="value {{ 'active' if user.is_active else 'inactive' }}"
+            >{{ 'Active' if user.is_active else 'Inactive' }}</span
+          >
+        </div>
+      </div>
+      {% else %}
       <p>Loading...</p>
+      {% endif %}
     </div>
   </div>
   <div class="card-footer profile-actions">
@@ -71,18 +94,22 @@
     const profileInfo = document.getElementById("profileInfo");
     profileInfo.innerHTML = `
             <div class="user-info">
-                <div class="info-item">
-                    <span class="label">Username:</span>
-                    <span class="value">${user.username}</span>
-                </div>
-                <div class="info-item">
-                    <span class="label">Email:</span>
-                    <span class="value">${user.email}</span>
-                </div>
-                <div class="info-item">
-                    <span class="label">Status:</span>
-                    <span class="value ${user.is_active ? "active" : "inactive"}">${user.is_active ? "Active" : "Inactive"}</span>
-                </div>
+                      <div class="info-item">
+                        <span class="label">Username:</span>
+                        <span class="value">${user.username}</span>
+                      </div>
+                      <div class="info-item">
+                        <span class="label">Email:</span>
+                        <span class="value">${user.email}</span>
+                      </div>
+                      <div class="info-item">
+                        <span class="label">Points:</span>
+                        <span class="value">${user.point || 0}</span>
+                      </div>
+                      <div class="info-item">
+                        <span class="label">Status:</span>
+                        <span class="value ${user.is_active ? "active" : "inactive"}">${user.is_active ? "Active" : "Inactive"}</span>
+                      </div>
             </div>
         `;
   }
