@@ -55,7 +55,7 @@ def register(
 
         # 2. 检查邮箱是否已注册
         db_user = crud.get_user_by_email(db, email=user.email)
-        if db_user:
+        if db_user and db_user.is_active:
             raise HTTPException(
                 status_code=400, detail="Email already registered.")
 
@@ -65,10 +65,20 @@ def register(
         print(
             f"Verification code generated: {verification_code}, expires_at: {code_expires_at}")
 
-        # 4. 创建用户（未激活状态）
-        db_user = crud.create_user(
-            db=db, user=user, verification_code=verification_code, code_expires_at=code_expires_at)
-        print(f"User created successfully, ID: {db_user.id}")
+        # 4. 创建用户（未激活状态）或更新已有未激活用户
+        if db_user and not db_user.is_active:
+            db_user.username = user.username
+            db_user.hashed_password = security.get_password_hash(user.password)
+            db_user.verification_code = verification_code
+            db_user.code_expires_at = code_expires_at
+            db_user.is_active = False
+            db.commit()
+            db.refresh(db_user)
+            print(f"Unverified user updated, ID: {db_user.id}")
+        else:
+            db_user = crud.create_user(
+                db=db, user=user, verification_code=verification_code, code_expires_at=code_expires_at)
+            print(f"User created successfully, ID: {db_user.id}")
 
         # 5. 发送验证邮件
         try:
@@ -76,17 +86,21 @@ def register(
                 f"调用send_verification_email({user.email}, {verification_code})")
             email_sent = send_verification_email(user.email, verification_code)
             if not email_sent:
-                # 邮件发送失败，删除用户
-                db.delete(db_user)
-                db.commit()
+                # 邮件发送失败，回滚本次注册流程
+                if not db_user.is_active and db_user.verification_code == verification_code:
+                    db_user.verification_code = None
+                    db_user.code_expires_at = None
+                    db.commit()
                 raise HTTPException(
                     status_code=500, detail="Email verification failed, please try again later")
         except Exception as email_error:
-            # 邮件发送异常，删除用户
+            # 邮件发送异常，回滚本次验证码状态
             import traceback
             traceback.print_exc()
-            db.delete(db_user)
-            db.commit()
+            if not db_user.is_active and db_user.verification_code == verification_code:
+                db_user.verification_code = None
+                db_user.code_expires_at = None
+                db.commit()
             raise HTTPException(
                 status_code=500, detail="Email verification failed, please try again later")
         return db_user

@@ -1,5 +1,24 @@
-{% extends "index.html" %} {% block title %}User Profile{% endblock %} {% block
-content %}
+{% extends "index.html" %} {% block title %}User Profile{% endblock %}
+{% block head %}
+<style>
+  .profile-actions {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+
+  .profile-actions .action-btn {
+    min-width: 140px;
+    text-align: center;
+    box-sizing: border-box;
+    display: inline-flex;
+    justify-content: center;
+    align-items: center;
+  }
+</style>
+{% endblock %} {% block content %}
 <div class="card">
   <div class="card-header">
     <h2>User Profile</h2>
@@ -9,9 +28,11 @@ content %}
       <p>Loading...</p>
     </div>
   </div>
-  <div class="card-footer">
-    <button id="logout-btn" class="btn btn-secondary">Logout</button>
-    <a href="/" class="btn btn-primary">Home</a>
+  <div class="card-footer profile-actions">
+    <button id="logout-btn" class="btn btn-secondary action-btn" type="button">
+      Logout
+    </button>
+    <a href="/" class="btn btn-primary action-btn">Home</a>
   </div>
 </div>
 {% endblock %} {% block scripts %}
