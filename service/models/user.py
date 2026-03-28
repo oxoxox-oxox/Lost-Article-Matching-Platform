@@ -12,26 +12,31 @@ class User(Base):
     email = Column(String(255), unique=True, index=True)
     username = Column(String(100))
     hashed_password = Column(String(255))
-    is_active = Column(Boolean, default=False)  # 默认未激活，需要邮箱验证
+    is_active = Column(Boolean, default=False)  
     verification_code = Column(String(10), nullable=True)
     code_expires_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow,
                         onupdate=datetime.utcnow)
-    point = Column(Integer, default=0)  # 用户积分，初始为0
+    point = Column(Integer, default=0)  
 
     __tablename__ = "reports"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer)  # 举报人ID
-    image = Column(String(255))  # 举报的图片URL
+    user_id = Column(Integer)  
+    image = Column(String(255))  
+    description = Column(String(255))  # store the discription of the item
     created_at = Column(DateTime, default=datetime.utcnow)
-    status = Column(Boolean, default=False)  # 是否已处理举报
-    features = Column(String(255), nullable=True)  # 举报图片的特征值，便于后续分析和处理
-
+    status = Column(Boolean, default=False)  
+    features_img = Column(String(255), nullable=True)  
+    features_dis = Column(String(255), nullable=True)  
     __tablename__ = "requests"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer)  # 请求人ID
-    features = Column(String(255))  # 请求的图片特征值
+    user_id = Column(Integer) 
+    image = Column(String(255)) 
+    dsecription = Column(String(255))  # store the discription of the item
+    status = Column(Boolean, default=False)  
     created_at = Column(DateTime, default=datetime.utcnow)
+    features_img = Column(String(255), nullable=True) 
+    features_dis = Column(String(255), nullable=True)  
