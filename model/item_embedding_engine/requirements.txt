@@ -1,3 +1,0 @@
-sentence-transformers>=2.7.0
-numpy>=1.24.0
-torch>=2.0.0 # Default to CPU-compatible version; users can install CUDA or MPS versions as needed
