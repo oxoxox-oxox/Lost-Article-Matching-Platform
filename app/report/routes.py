@@ -20,7 +20,7 @@ templates = Jinja2Templates(directory="templates")
 
 @report_router.get("/", response_class=HTMLResponse)
 async def report_page(request: Request):
-    return templates.TemplateResponse("report/report.html", {"request": request})
+    return templates.TemplateResponse(request, "report/report.html", {"request": request})
 
 
 @report_router.post("/")
@@ -33,7 +33,7 @@ async def report_submit(
     db: Session = Depends(get_db)
 ):
     # 这里可以添加处理上传文件和存储信息的逻辑
-    return templates.TemplateResponse("report/report.html", {"request": request, "success": True})
+    return templates.TemplateResponse(request, "report/report.html", {"request": request, "success": True})
 
 
 def _get_client():

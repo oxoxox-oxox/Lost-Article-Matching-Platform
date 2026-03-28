@@ -76,7 +76,7 @@
         Search request submitted successfully!
     </div>
     {% endif %}
-    <form action="/search" method="post" enctype="multipart/form-data">
+    <form id="searchForm" action="/search/" method="post" enctype="multipart/form-data">
         <div class="form-group">
             <label for="description">Item Description</label>
             <textarea id="description" name="description" required
@@ -89,18 +89,93 @@
                 <input type="file" id="image" name="image" accept="image/*" required>
             </div>
         </div>
-        <button type="submit">Submit Search</button>
+        <button type="submit" id="submitBtn">Submit Search</button>
     </form>
+    <div id="apiResult" class="success-message" style="display:none;"></div>
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script>
+    const searchForm = document.getElementById('searchForm');
+    const submitBtn = document.getElementById('submitBtn');
+    const apiResult = document.getElementById('apiResult');
+
     document.getElementById('image').addEventListener('change', function (e) {
         const file = e.target.files[0];
         if (file) {
             const uploadArea = document.querySelector('.file-upload p');
             uploadArea.textContent = `Selected file: ${file.name}`;
+        }
+    });
+
+    function showResult(message, isError = false) {
+        apiResult.style.display = 'block';
+        apiResult.textContent = message;
+        if (isError) {
+            apiResult.style.backgroundColor = '#fee2e2';
+            apiResult.style.color = '#991b1b';
+            apiResult.style.border = '1px solid #fecaca';
+        } else {
+            apiResult.style.backgroundColor = '#d4edda';
+            apiResult.style.color = '#155724';
+            apiResult.style.border = 'none';
+        }
+    }
+
+    searchForm.addEventListener('submit', async function (e) {
+        e.preventDefault();
+
+        const description = document.getElementById('description').value.trim();
+        const imageFile = document.getElementById('image').files[0] || null;
+
+        if (!description) {
+            showResult('Description is required.', true);
+            return;
+        }
+
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Submitting...';
+
+        try {
+            const outputs = [];
+
+            const textForm = new FormData();
+            textForm.append('text', description);
+            const textResp = await fetch('/search/embed_text', {
+                method: 'POST',
+                body: textForm
+            });
+            if (!textResp.ok) {
+                const err = await textResp.json().catch(() => ({}));
+                throw new Error(err.detail || 'Text API request failed');
+            }
+            const textData = await textResp.json();
+            outputs.push(`Text saved: id=${textData.id}, vector_len=${textData.vector_len}.`);
+
+            if (imageFile) {
+                const imageForm = new FormData();
+                imageForm.append('image', imageFile);
+                imageForm.append('description', description);
+
+                const imageResp = await fetch('/search/embed_image', {
+                    method: 'POST',
+                    body: imageForm
+                });
+                if (!imageResp.ok) {
+                    const err = await imageResp.json().catch(() => ({}));
+                    throw new Error(err.detail || 'Image API request failed');
+                }
+                const imageData = await imageResp.json();
+                outputs.push(`Image saved: id=${imageData.id}, vector_len=${imageData.vector_len}.`);
+            }
+
+            showResult(outputs.join(' '));
+        } catch (error) {
+            showResult(error.message || 'Submit failed', true);
+        } finally {
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Submit Search';
         }
     });
 </script>

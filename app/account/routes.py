@@ -38,7 +38,7 @@ async def account_page(request: Request, db: Session = Depends(get_db)):
             raise HTTPException(status_code=404, detail="User not found")
 
         # Logged in, show profile page
-        return templates.TemplateResponse("account/profile.html", {"request": request, "user": user})
+        return templates.TemplateResponse(request, "account/profile.html", {"request": request, "user": user})
     except:
         # Invalid token, redirect to login page
         return RedirectResponse(url="/account/login")
@@ -46,19 +46,19 @@ async def account_page(request: Request, db: Session = Depends(get_db)):
 
 @account_router.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request):
-    return templates.TemplateResponse("account/login.html", {"request": request})
+    return templates.TemplateResponse(request, "account/login.html", {"request": request})
 
 
 @account_router.get("/register", response_class=HTMLResponse)
 async def register_page(request: Request):
-    return templates.TemplateResponse("account/register.html", {"request": request})
+    return templates.TemplateResponse(request, "account/register.html", {"request": request})
 
 
 @account_router.get("/authemail", response_class=HTMLResponse)
 async def authemail_page(request: Request, email: str = Query(None)):
-    return templates.TemplateResponse("account/authemail.html", {"request": request, "email": email})
+    return templates.TemplateResponse(request, "account/authemail.html", {"request": request, "email": email})
 
 
 @account_router.get("/profile", response_class=HTMLResponse)
 async def profile_page(request: Request):
-    return templates.TemplateResponse("account/profile.html", {"request": request})
+    return templates.TemplateResponse(request, "account/profile.html", {"request": request})

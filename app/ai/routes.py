@@ -92,4 +92,4 @@ async def chat(request: AIRequest):
 
 @router.get("/chat", response_class=HTMLResponse)
 async def ai_chat_page(request: Request):
-    return templates.TemplateResponse("ai_chat.html", {"request": request})
+    return templates.TemplateResponse(request, "ai_chat.html", {"request": request})
