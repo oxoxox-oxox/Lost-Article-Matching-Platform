@@ -9,13 +9,34 @@ from PIL import Image
 from zhipuai import ZhipuAI
 from service.database import get_db
 from sqlalchemy.orm import Session
-from service.models import Report
+from service.models import Report, User
+import service.security as security
 
 report_router = APIRouter(
     prefix="/report",
     tags=["Report"]
 )
 templates = Jinja2Templates(directory="templates")
+
+
+def _require_auth_user(request: Request, db: Session = Depends(get_db)) -> User:
+    token = request.headers.get(
+        "Authorization", "").replace("Bearer ", "").strip()
+    if not token:
+        raise HTTPException(status_code=401, detail="No access token provided")
+
+    payload = security.decode_access_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Invalid access token")
+
+    email = payload.get("sub")
+    if not email:
+        raise HTTPException(status_code=401, detail="Invalid access token")
+
+    user = db.query(User).filter(User.email == email).first()
+    if not user or not user.is_active:
+        raise HTTPException(status_code=401, detail="User not authenticated")
+    return user
 
 
 @report_router.get("/", response_class=HTMLResponse)
@@ -30,6 +51,7 @@ async def report_submit(
     time: str = Form(None),
     location: str = Form(None),
     description: str = Form(None),
+    current_user: User = Depends(_require_auth_user),
     db: Session = Depends(get_db)
 ):
     # 这里可以添加处理上传文件和存储信息的逻辑
@@ -77,6 +99,8 @@ async def report_embed_image(
     request: Request,
     image: UploadFile | None = File(None),
     description: str | None = Form(None),
+    report_id: int | None = Form(None),
+    current_user: User = Depends(_require_auth_user),
     db: Session = Depends(get_db),
 ):
     """Accept optional image and description, produce a <=256-char lost-and-found prompt via vision model
@@ -137,11 +161,32 @@ async def report_embed_image(
 
     # persist to DB
     try:
-        record = Report(image=(image.filename if image else None),
-                        description=text_out, features_img=json.dumps(vector))
-        db.add(record)
+        if report_id is not None:
+            record = db.query(Report).filter(Report.id == report_id).first()
+            if not record:
+                raise HTTPException(
+                    status_code=404, detail=f"report_id={report_id} not found")
+            if record.user_id and record.user_id != current_user.id:
+                raise HTTPException(
+                    status_code=403, detail="No permission to update this report")
+            if not record.user_id:
+                record.user_id = current_user.id
+            record.image = image.filename if image else record.image
+            record.features_img = json.dumps(vector)
+            if not record.description:
+                record.description = description or text_out
+        else:
+            record = Report(
+                user_id=current_user.id,
+                image=(image.filename if image else None),
+                description=(description or text_out),
+                features_img=json.dumps(vector),
+            )
+            db.add(record)
         db.commit()
         db.refresh(record)
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"db error: {e}")
 
@@ -150,7 +195,10 @@ async def report_embed_image(
 
 @report_router.post("/embed_text")
 async def report_embed_text(
+    request: Request,
     text: str = Form(...),
+    report_id: int | None = Form(None),
+    current_user: User = Depends(_require_auth_user),
     db: Session = Depends(get_db),
 ):
     """Convert supplied text to a 2048-dim embedding and save to reports.features_dis."""
@@ -163,10 +211,26 @@ async def report_embed_text(
         raise HTTPException(status_code=500, detail=f"embedding error: {e}")
 
     try:
-        record = Report(description=text, features_dis=json.dumps(vector))
-        db.add(record)
+        if report_id is not None:
+            record = db.query(Report).filter(Report.id == report_id).first()
+            if not record:
+                raise HTTPException(
+                    status_code=404, detail=f"report_id={report_id} not found")
+            if record.user_id and record.user_id != current_user.id:
+                raise HTTPException(
+                    status_code=403, detail="No permission to update this report")
+            if not record.user_id:
+                record.user_id = current_user.id
+            record.description = text
+            record.features_dis = json.dumps(vector)
+        else:
+            record = Report(user_id=current_user.id,
+                            description=text, features_dis=json.dumps(vector))
+            db.add(record)
         db.commit()
         db.refresh(record)
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"db error: {e}")
 

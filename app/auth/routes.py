@@ -62,7 +62,8 @@ def register(
         # 3. 生成验证码
         verification_code = generate_verification_code()
         code_expires_at = datetime.utcnow() + timedelta(minutes=10)
-        print(f"Verification code generated: {verification_code}, expires_at: {code_expires_at}")
+        print(
+            f"Verification code generated: {verification_code}, expires_at: {code_expires_at}")
 
         # 4. 创建用户（未激活状态）
         db_user = crud.create_user(
@@ -137,7 +138,6 @@ def resend_verification_code(
     return {"message": "Verification code resent"}
 
 
-
 @auth_router.post("/verify-code")
 def verify_code(
     request: VerifyCodeRequest,
@@ -163,20 +163,17 @@ def login(
     db: Session = Depends(database.get_db),
     rate_limit: bool = Depends(check_rate_limit)  # 登录同样防暴力破解
 ):
-    # 1. 查找用户（支持账号或邮箱登录）
-    user = None
-    # 尝试通过邮箱查找
-    if '@' in user_credentials.username_or_email:
-        user = crud.get_user_by_email(
-            db, email=user_credentials.username_or_email)
-    else:
-        # 尝试通过账号查找
-        user = crud.get_user_by_username(
-            db, username=user_credentials.username_or_email)
+    # 1. 仅允许邮箱登录
+    login_email = (user_credentials.username_or_email or "").strip()
+    if '@' not in login_email:
+        raise HTTPException(
+            status_code=401, detail="Email login only")
+
+    user = crud.get_user_by_email(db, email=login_email)
 
     if not user:
         raise HTTPException(
-            status_code=401, detail="Username or email not found")
+            status_code=401, detail="Email not found")
 
     # 2. 检查用户是否已激活
     if not user.is_active:
@@ -190,6 +187,7 @@ def login(
     access_token = security.create_access_token(data={"sub": user.email})
     return {"access_token": access_token, "token_type": "bearer"}
 
+
 @auth_router.get("/check-username")
 def check_username(
     username: str,
@@ -197,6 +195,7 @@ def check_username(
 ):
     user = crud.get_user_by_username(db, username=username)
     return {"exists": user is not None}
+
 
 @auth_router.get("/check-email")
 def check_email(
