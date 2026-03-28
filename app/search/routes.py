@@ -5,79 +5,22 @@ from fastapi.responses import HTMLResponse, JSONResponse
 import os
 import base64
 import json
-import re
 from io import BytesIO
 from PIL import Image
 from zhipuai import ZhipuAI
 from service.database import get_db
 from sqlalchemy.orm import Session
-from service.models import Request as RequestModel, User
+from service.models import Request as RequestModel, User, Report
 import service.security as security
-from app.search.match import run_two_stage_screening, run_two_stage_screening_multimodal
-from pydantic import BaseModel
-from typing import Any, Optional
-import importlib.util
-
-# Import ItemEmbeddingEngine for multimodal ranking (dynamic import for hyphenated module name)
-
-
-def _load_embedding_engine_for_routes() -> tuple[bool, Any, Any]:
-    """Load ItemEmbeddingEngine and EngineConfig from Cross-Modal_Finder.py."""
-    try:
-        module_path = os.path.join(
-            os.path.dirname(__file__),
-            "../../model/Cross-Modal_Finder/Cross-Modal_Finder.py"
-        )
-        module_path = os.path.normpath(module_path)
-
-        if not os.path.exists(module_path):
-            return False, None, None
-
-        spec = importlib.util.spec_from_file_location(
-            "cross_modal_finder_routes",
-            module_path
-        )
-        if spec is None or spec.loader is None:
-            return False, None, None
-
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-        return True, module.ItemEmbeddingEngine, module.EngineConfig
-    except Exception:
-        return False, None, None
-
-
-EMBEDDING_ENGINE_AVAILABLE, ItemEmbeddingEngine, EngineConfig = _load_embedding_engine_for_routes()
-
-# Global cache for ItemEmbeddingEngine (lazy initialization)
-_embedding_engine: Optional[Any] = None
-
-
-def _get_embedding_engine() -> Any:
-    """Get or create the ItemEmbeddingEngine instance (lazy initialization)."""
-    global _embedding_engine
-    if _embedding_engine is None and EMBEDDING_ENGINE_AVAILABLE and EngineConfig is not None:
-        try:
-            config = EngineConfig(device="cpu")  # Use CPU for web service
-            _embedding_engine = ItemEmbeddingEngine(config)
-        except Exception as e:
-            raise RuntimeError(
-                f"Failed to initialize ItemEmbeddingEngine: {e}")
-    return _embedding_engine
-
+from app.search.match import run_two_stage_screening
+from fastapi.responses import Response
+import struct
 
 search_router = APIRouter(
     prefix="/search",
     tags=["Search"]
 )
 templates = Jinja2Templates(directory="templates")
-
-
-class SearchChatParseResult(BaseModel):
-    normalized_query: str = ""
-    should_search: bool = False
-    follow_up_question: str = ""
-    user_reply: str = ""
 
 
 def _require_auth_user(request: Request, db: Session = Depends(get_db)) -> User:
@@ -98,6 +41,44 @@ def _require_auth_user(request: Request, db: Session = Depends(get_db)) -> User:
     if not user or not user.is_active:
         raise HTTPException(status_code=401, detail="User not authenticated")
     return user
+
+
+def _optional_auth_user(request: Request, db: Session = Depends(get_db)) -> User | None:
+    token = request.headers.get(
+        "Authorization", "").replace("Bearer ", "").strip()
+    if not token:
+        return None
+    payload = security.decode_access_token(token)
+    if not payload:
+        return None
+    email = payload.get("sub")
+    if not email:
+        return None
+    user = db.query(User).filter(User.email == email).first()
+    if not user or not user.is_active:
+        return None
+    return user
+
+
+# Simple XOR token encoding/decoding using hex key
+_XOR_KEY_HEX = "A387ED14"
+_XOR_KEY = bytes.fromhex(_XOR_KEY_HEX)
+
+
+def _encode_id_to_token(id_val: int) -> str:
+    b = int(id_val).to_bytes(8, "big")
+    x = bytes([b[i] ^ _XOR_KEY[i % len(_XOR_KEY)] for i in range(len(b))])
+    return x.hex()
+
+
+def _decode_token_to_id(token: str) -> int:
+    try:
+        raw = bytes.fromhex(token)
+        b = bytes([raw[i] ^ _XOR_KEY[i % len(_XOR_KEY)]
+                  for i in range(len(raw))])
+        return int.from_bytes(b, "big")
+    except Exception:
+        raise HTTPException(status_code=400, detail="invalid token")
 
 
 @search_router.get("/", response_class=HTMLResponse)
@@ -149,402 +130,6 @@ def _build_prompt_from_image_and_text(image_b64: str | None, user_text: str | No
             "\n(Image attached; supplement features from the image.)"
 
     return combined
-
-
-def _extract_json_object(text: str) -> dict[str, Any] | None:
-    """Best-effort parse for JSON outputs wrapped in markdown or extra text."""
-    if not text:
-        return None
-    content = text.strip()
-
-    # Remove fenced code blocks if present.
-    if content.startswith("```"):
-        content = re.sub(r"^```(?:json)?\\s*", "", content)
-        content = re.sub(r"\\s*```$", "", content)
-
-    try:
-        parsed = json.loads(content)
-        return parsed if isinstance(parsed, dict) else None
-    except Exception:
-        pass
-
-    match = re.search(r"\{[\s\S]*\}", content)
-    if not match:
-        return None
-
-    try:
-        parsed = json.loads(match.group(0))
-        return parsed if isinstance(parsed, dict) else None
-    except Exception:
-        return None
-
-
-def _to_str(value: Any) -> str:
-    if value is None:
-        return ""
-    return str(value).strip()
-
-
-def _normalize_markdown_text(text: str) -> str:
-    """Convert common escaped sequences to real control chars for cleaner markdown rendering."""
-    normalized = _to_str(text)
-    normalized = normalized.replace("\\r\\n", "\n")
-    normalized = normalized.replace("\\n", "\n")
-    normalized = normalized.replace("\\t", "\t")
-    return normalized
-
-
-def _build_search_reply_from_screening(parsed_query: str, screening: dict[str, Any]) -> str:
-    matches = screening.get("matches") or []
-    summary = screening.get("summary") or {}
-    kept = int(summary.get("refine_kept", len(matches)) or 0)
-    coarse_pass = int(summary.get("coarse_pass", 0) or 0)
-
-    if not matches:
-        return (
-            "## Search Result\n"
-            f"I understood your request: **{parsed_query}**.\n\n"
-            "No high-confidence match was found yet.\n\n"
-            "### Next Step Suggestions\n"
-            "- Add clearer identifiers: brand, color, scratches, stickers, serial pattern\n"
-            "- Include exact time and area where the item was lost\n"
-            "- Upload another clearer image if available"
-        )
-
-    top = matches[:3]
-    lines = [
-        "## Search Result",
-        f"I found **{kept}** potential match(es) for: **{parsed_query}**",
-        f"Initial screening passed **{coarse_pass}** candidate(s).",
-        "",
-        "### Top Candidates",
-    ]
-    for idx, item in enumerate(top, start=1):
-        score = float(item.get("final_score", item.get("score", 0.0)) or 0.0)
-        label = _to_str(item.get("refine_label")) or "maybe"
-        desc = _to_str(item.get("description"))
-        if len(desc) > 120:
-            desc = desc[:120] + "..."
-        lines.append(
-            f"{idx}. **Candidate #{item.get('id')}** | confidence: `{score:.2f}` | label: `{label}`  \n{desc}"
-        )
-    lines.append(
-        "\n### Continue Refining\n"
-        "If you want, send more details or another photo, and I will narrow the result further."
-    )
-    return "\n".join(lines)
-
-
-def _compose_markdown_reply_with_llm(
-    client: ZhipuAI,
-    parsed_query: str,
-    screening: dict[str, Any] | None,
-    should_search: bool,
-    guidance_text: str,
-) -> str | None:
-    """Generate user-facing markdown reply with strict formatting constraints."""
-    prompt = {
-        "parsed_query": parsed_query,
-        "should_search": should_search,
-        "guidance_text": guidance_text,
-        "screening": screening,
-    }
-
-    system_text = (
-        "You are a lost-and-found search assistant. "
-        "Reply in clean GitHub-flavored Markdown only. "
-        "Use concise sections and short bullet lists when useful. "
-        "Output requirements: "
-        "1) Start with heading '## Search Assistant Reply'; "
-        "2) If there are matches, include heading '### Top Matches' and a numbered list; "
-        "3) If no matches, include No matches and in next line include heading '### Next Steps' with 3 actionable bullets; "
-        "4) Keep tone supportive and practical; "
-        "5) Do not output JSON or code fences."
-    )
-
-    try:
-        resp = client.chat.completions.create(
-            model="glm-4-flash",
-            messages=[
-                {"role": "system", "content": system_text},
-                {
-                    "role": "user",
-                    "content": json.dumps(prompt, ensure_ascii=False),
-                },
-            ],
-            temperature=0.3,
-            top_p=0.7,
-        )
-        text = resp.choices[0].message.content
-        if isinstance(text, list):
-            text = "\n".join(
-                [block.get("text", "")
-                 for block in text if isinstance(block, dict)]
-            )
-        text = _normalize_markdown_text(_to_str(text))
-        return text or None
-    except Exception:
-        return None
-
-
-def _normalize_history(history_raw: str | None) -> list[dict[str, str]]:
-    if not history_raw:
-        return []
-    try:
-        data = json.loads(history_raw)
-    except Exception:
-        return []
-    if not isinstance(data, list):
-        return []
-
-    normalized: list[dict[str, str]] = []
-    for item in data[-8:]:
-        if not isinstance(item, dict):
-            continue
-        role = _to_str(item.get("role")).lower()
-        content = _to_str(item.get("content"))
-        if role in {"user", "assistant"} and content:
-            normalized.append({"role": role, "content": content})
-    return normalized
-
-
-@search_router.post("/chat")
-async def search_chat(
-    request: Request,
-    message: str = Form(...),
-    history: str | None = Form(None),
-    image: UploadFile | None = File(None),
-    top_n: int = Form(8),
-    coarse_top_k: int = Form(30),
-    min_coarse_score: float = Form(0.2),
-    current_user: User = Depends(_require_auth_user),
-    db: Session = Depends(get_db),
-):
-    """Chat-style search endpoint with optional image input and user-friendly responses."""
-    user_message = (message or "").strip()
-    if not user_message:
-        raise HTTPException(status_code=400, detail="message is required")
-
-    try:
-        client = _get_client()
-    except RuntimeError as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-    image_b64 = None
-    if image:
-        try:
-            body = await image.read()
-            image_b64 = _image_to_base64(body)
-        except Exception as e:
-            raise HTTPException(status_code=400, detail=f"invalid image: {e}")
-
-    history_messages = _normalize_history(history)
-
-    parse_system_prompt = (
-        "You are an assistant for a lost-and-found search platform. "
-        "Understand the user's latest request and output ONLY JSON with keys: "
-        "normalized_query (string), should_search (boolean), follow_up_question (string), user_reply (string). "
-        "Use should_search=true only when enough concrete item details exist. "
-        "If details are insufficient, set should_search=false and ask one concise follow-up question in follow_up_question. "
-        "Both user_reply and follow_up_question must be markdown-friendly plain text (short headings and bullets allowed)."
-    )
-
-    parse_user_payload = {
-        "latest_message": user_message,
-        "history": history_messages,
-        "has_image": bool(image_b64),
-    }
-
-    parse_content: list[dict[str, Any]] = [
-        {"type": "text", "text": json.dumps(
-            parse_user_payload, ensure_ascii=False)}
-    ]
-    if image_b64:
-        parse_content.append(
-            {"type": "image_url", "image_url": {"url": image_b64}})
-
-    try:
-        parse_resp = client.chat.completions.create(
-            model="glm-4v-flash",
-            messages=[
-                {"role": "system", "content": parse_system_prompt},
-                {"role": "user", "content": parse_content},
-            ],
-            temperature=0.1,
-            top_p=0.7,
-        )
-        parse_raw = parse_resp.choices[0].message.content
-        if isinstance(parse_raw, list):
-            parse_raw = "\n".join(
-                [block.get("text", "")
-                 for block in parse_raw if isinstance(block, dict)]
-            )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"parse error: {e}")
-
-    parsed_obj = _extract_json_object(_to_str(parse_raw)) or {}
-    parsed = SearchChatParseResult(
-        normalized_query=_to_str(parsed_obj.get(
-            "normalized_query")) or user_message,
-        should_search=bool(parsed_obj.get("should_search", False)),
-        follow_up_question=_to_str(parsed_obj.get("follow_up_question")),
-        user_reply=_to_str(parsed_obj.get("user_reply")),
-    )
-
-    if not parsed.should_search:
-        friendly_reply = parsed.user_reply or "Thanks. I need one more detail before searching."
-        if parsed.follow_up_question:
-            friendly_reply = f"{friendly_reply}\n\n{parsed.follow_up_question}"
-        friendly_reply = _normalize_markdown_text(friendly_reply)
-        markdown_reply = _compose_markdown_reply_with_llm(
-            client=client,
-            parsed_query=parsed.normalized_query,
-            screening=None,
-            should_search=False,
-            guidance_text=friendly_reply,
-        )
-        return JSONResponse(
-            {
-                "assistant_reply": markdown_reply or friendly_reply,
-                "parsed": parsed.model_dump(),
-                "screening": None,
-            }
-        )
-
-    try:
-        text_emb_resp = client.embeddings.create(
-            model="embedding-3", input=parsed.normalized_query, dimensions=2048
-        )
-        text_vector = text_emb_resp.data[0].embedding
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"text embedding error: {e}")
-
-    image_vector = None
-    image_filename = image.filename if image else None
-    if image_b64:
-        try:
-            vision_prompt = (
-                "Summarize the visible lost-item information into one concise retrieval text "
-                "with category, color, material, key features, and location clues."
-            )
-            vision_resp = client.chat.completions.create(
-                model="glm-4v-flash",
-                messages=[
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "text",
-                                "text": f"User query: {parsed.normalized_query}"},
-                            {"type": "text", "text": vision_prompt},
-                            {"type": "image_url", "image_url": {"url": image_b64}},
-                        ],
-                    }
-                ],
-                temperature=0.0,
-                top_p=0.7,
-            )
-            image_prompt_text = vision_resp.choices[0].message.content
-            if isinstance(image_prompt_text, list):
-                image_prompt_text = "\n".join(
-                    [block.get("text", "")
-                     for block in image_prompt_text if isinstance(block, dict)]
-                )
-            image_prompt_text = _to_str(
-                image_prompt_text) or parsed.normalized_query
-
-            image_emb_resp = client.embeddings.create(
-                model="embedding-3", input=image_prompt_text, dimensions=2048
-            )
-            image_vector = image_emb_resp.data[0].embedding
-        except Exception as e:
-            raise HTTPException(
-                status_code=500, detail=f"image embedding error: {e}")
-
-    try:
-        request_record = RequestModel(
-            user_id=current_user.id,
-            image=image_filename,
-            description=parsed.normalized_query,
-            features_dis=json.dumps(text_vector),
-            features_img=(json.dumps(image_vector)
-                          if image_vector is not None else None),
-        )
-        db.add(request_record)
-        db.commit()
-        db.refresh(request_record)
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(status_code=500, detail=f"db error: {e}")
-
-    try:
-        screening = None
-
-        # Try to use multimodal fine-ranking if engine is available
-        if EMBEDDING_ENGINE_AVAILABLE:
-            try:
-                engine = _get_embedding_engine()
-
-                # Prepare image for multimodal ranking
-                user_image = None
-                if image_b64:
-                    try:
-                        # Convert base64 to PIL.Image
-                        image_data = base64.b64decode(image_b64.split(",")[-1])
-                        user_image = Image.open(BytesIO(image_data))
-                    except Exception:
-                        user_image = None
-
-                screening = run_two_stage_screening_multimodal(
-                    db=db,
-                    user_text=parsed.normalized_query,
-                    user_image=user_image,
-                    top_n=max(1, min(top_n, 10)),
-                    coarse_top_k=max(10, min(coarse_top_k, 100)),
-                    min_coarse_score=min_coarse_score,
-                    input_text_vector=text_vector,
-                    input_image_vector=image_vector,
-                    engine=engine,
-                )
-            except Exception as e:
-                import traceback
-                traceback.print_exc()
-                # Fallback to old screening if multimodal fails
-                screening = None
-
-        # Fallback to old LLM-based screening
-        if screening is None:
-            screening = run_two_stage_screening(
-                db=db,
-                input_text_vector=text_vector,
-                input_image_vector=image_vector,
-                query_description=parsed.normalized_query,
-                top_n=max(1, min(top_n, 10)),
-                coarse_top_k=max(10, min(coarse_top_k, 100)),
-                min_coarse_score=min_coarse_score,
-            )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"screening error: {e}")
-
-    fallback_reply = _normalize_markdown_text(
-        _build_search_reply_from_screening(parsed.normalized_query, screening)
-    )
-    assistant_reply = _compose_markdown_reply_with_llm(
-        client=client,
-        parsed_query=parsed.normalized_query,
-        screening=screening,
-        should_search=True,
-        guidance_text=fallback_reply,
-    ) or fallback_reply
-
-    return JSONResponse(
-        {
-            "assistant_reply": assistant_reply,
-            "parsed": parsed.model_dump(),
-            "screening": screening,
-            "request_id": request_record.id,
-        }
-    )
 
 
 @search_router.post("/embed_image")
@@ -746,51 +331,15 @@ async def search_screen(
                 status_code=500, detail=f"image embedding error: {e}")
 
     try:
-        screening = None
-
-        # Try to use multimodal fine-ranking if engine is available
-        if EMBEDDING_ENGINE_AVAILABLE:
-            try:
-                engine = _get_embedding_engine()
-
-                # Prepare image for multimodal ranking
-                user_image = None
-                if image:
-                    try:
-                        # Convert uploaded image to PIL.Image
-                        body = await image.read()
-                        user_image = Image.open(BytesIO(body))
-                    except Exception:
-                        user_image = None
-
-                screening = run_two_stage_screening_multimodal(
-                    db=db,
-                    user_text=text,
-                    user_image=user_image,
-                    top_n=top_n,
-                    coarse_top_k=coarse_top_k,
-                    min_coarse_score=min_coarse_score,
-                    input_text_vector=text_vector,
-                    input_image_vector=image_vector,
-                    engine=engine,
-                )
-            except Exception as e:
-                import traceback
-                traceback.print_exc()
-                # Fallback to old screening if multimodal fails
-                screening = None
-
-        # Fallback to old LLM-based screening
-        if screening is None:
-            screening = run_two_stage_screening(
-                db=db,
-                input_text_vector=text_vector,
-                input_image_vector=image_vector,
-                query_description=text,
-                top_n=top_n,
-                coarse_top_k=coarse_top_k,
-                min_coarse_score=min_coarse_score,
-            )
+        screening = run_two_stage_screening(
+            db=db,
+            input_text_vector=text_vector,
+            input_image_vector=image_vector,
+            query_description=text,
+            top_n=top_n,
+            coarse_top_k=coarse_top_k,
+            min_coarse_score=min_coarse_score,
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"screening error: {e}")
 
@@ -802,3 +351,102 @@ async def search_screen(
         },
         "screening": screening,
     })
+
+
+@search_router.get('/match/success/{token}', response_class=HTMLResponse)
+async def match_success_page(request: Request, token: str, current_user: User | None = Depends(_optional_auth_user), db: Session = Depends(get_db)):
+    """Show a candidate found-item (Report) and ask the user to confirm whether it's their item."""
+    report_id = _decode_token_to_id(token)
+    record = db.query(Report).filter(Report.id == report_id).first()
+    if not record:
+        raise HTTPException(status_code=404, detail=f"report not found")
+    return templates.TemplateResponse(request, "search/match_success.html", {"request": request, "report": record, "token": token})
+
+
+@search_router.get('/match/image/{token}')
+async def match_image(token: str, db: Session = Depends(get_db)):
+    """Return image bytes stored in DB for a given report token."""
+    report_id = _decode_token_to_id(token)
+    record = db.query(Report).filter(Report.id == report_id).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="report not found")
+    if not getattr(record, 'image_data', None):
+        raise HTTPException(status_code=404, detail="image not found")
+    try:
+        img_bytes = base64.b64decode(record.image_data)
+    except Exception:
+        raise HTTPException(status_code=500, detail="invalid image data")
+    return Response(content=img_bytes, media_type='image/jpeg')
+
+
+@search_router.post('/match/confirm')
+async def match_confirm(
+    request: Request,
+    token: str = Form(...),
+    confirm: str = Form(...),
+    current_user: User = Depends(_require_auth_user),
+    db: Session = Depends(get_db),
+):
+    """Handle user's confirmation. If confirmed, delete the matching report from DB. If not, return a redirect URL to the failed page."""
+    report_id = _decode_token_to_id(token)
+    record = db.query(Report).filter(Report.id == report_id).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="report not found")
+
+    if str(confirm).lower() in ("yes", "y", "true", "1"):
+        try:
+            db.delete(record)
+            db.commit()
+        except Exception as e:
+            raise HTTPException(
+                status_code=500, detail=f"db delete error: {e}")
+        return JSONResponse({"status": "deleted", "id": report_id})
+
+    # not confirmed -> instruct client to open failed page with prefilled description
+    prefill = (record.description or "")
+    redirect_url = f"/search/match/failed?prefill_description={base64.b64encode(prefill.encode('utf-8')).decode('ascii')}"
+    # include the token so the client can't guess IDs easily
+    redirect_url = redirect_url + f"&token={token}"
+    return JSONResponse({"status": "denied", "redirect": redirect_url})
+
+
+@search_router.get('/match/failed', response_class=HTMLResponse)
+async def match_failed_page(request: Request, prefill_description: str | None = None, current_user: User | None = Depends(_optional_auth_user)):
+    """Render the match-failed page where user can create a new `Request` (lost-item request)."""
+    pre = None
+    if prefill_description:
+        try:
+            pre = base64.b64decode(prefill_description).decode('utf-8')
+        except Exception:
+            pre = prefill_description
+    return templates.TemplateResponse(request, "search/match_failed.html", {"request": request, "prefill_description": pre})
+
+
+@search_router.post('/match/failed/submit')
+async def match_failed_submit(
+    request: Request,
+    description: str = Form(...),
+    location: str | None = Form(None),
+    current_user: User = Depends(_require_auth_user),
+    db: Session = Depends(get_db),
+):
+    """Create a new Request record for the user's lost-item report (from failed match flow)."""
+    composed = description
+    if location:
+        composed = f"{composed}\nLocation: {location}"
+
+    try:
+        record = RequestModel(user_id=current_user.id, description=composed)
+        db.add(record)
+        db.commit()
+        db.refresh(record)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"db error: {e}")
+
+    # return a tokenized id to avoid exposing raw IDs
+    try:
+        token = _encode_id_to_token(record.id)
+    except Exception:
+        token = str(record.id)
+
+    return JSONResponse({"status": "created", "id": record.id, "token": token})
