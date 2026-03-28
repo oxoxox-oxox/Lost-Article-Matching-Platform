@@ -2,17 +2,20 @@
 from fastapi import APIRouter, Request, UploadFile, File, Form, Depends, HTTPException
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse, JSONResponse
-import os
-import base64
 import json
-import re
-from io import BytesIO
-from PIL import Image
 from zhipuai import ZhipuAI
 from service.database import get_db
 from sqlalchemy.orm import Session
 from service.models import Request as RequestModel, User
-import service.security as security
+from service.auth_dependencies import require_auth_user
+from service.ai_utils import (
+    get_zhipu_client,
+    image_to_base64,
+    build_prompt_from_image_and_text,
+    extract_json_object,
+    to_str,
+    normalize_markdown_text,
+)
 from app.search.match import run_two_stage_screening
 from pydantic import BaseModel
 from typing import Any
@@ -31,26 +34,6 @@ class SearchChatParseResult(BaseModel):
     user_reply: str = ""
 
 
-def _require_auth_user(request: Request, db: Session = Depends(get_db)) -> User:
-    token = request.headers.get(
-        "Authorization", "").replace("Bearer ", "").strip()
-    if not token:
-        raise HTTPException(status_code=401, detail="No access token provided")
-
-    payload = security.decode_access_token(token)
-    if not payload:
-        raise HTTPException(status_code=401, detail="Invalid access token")
-
-    email = payload.get("sub")
-    if not email:
-        raise HTTPException(status_code=401, detail="Invalid access token")
-
-    user = db.query(User).filter(User.email == email).first()
-    if not user or not user.is_active:
-        raise HTTPException(status_code=401, detail="User not authenticated")
-    return user
-
-
 @search_router.get("/", response_class=HTMLResponse)
 async def search_page(request: Request):
     return templates.TemplateResponse(request, "search/search.html", {"request": request})
@@ -61,88 +44,11 @@ async def search_submit(
     request: Request,
     description: str = Form(None),
     image: UploadFile = File(None),
-    current_user: User = Depends(_require_auth_user),
+    current_user: User = Depends(require_auth_user),
     db: Session = Depends(get_db)
 ):
     # Logic to handle file uploads and search can be added here
     return templates.TemplateResponse(request, "search/search.html", {"request": request, "success": True})
-
-
-def _get_client():
-    api_key = os.getenv("ZHIPUAI_API_KEY")
-    if not api_key:
-        raise RuntimeError("ZHIPUAI_API_KEY is not set in environment")
-    return ZhipuAI(api_key=api_key)
-
-
-def _image_to_base64(image_bytes: bytes) -> str:
-    img = Image.open(BytesIO(image_bytes))
-    if img.mode == 'RGBA':
-        img = img.convert('RGB')
-    img.thumbnail((1024, 1024))
-    buf = BytesIO()
-    img.save(buf, format='JPEG', quality=85)
-    return base64.b64encode(buf.getvalue()).decode('utf-8')
-
-
-def _build_prompt_from_image_and_text(image_b64: str | None, user_text: str | None) -> str:
-    base = (
-        "Please generate a lost-and-found description no longer than 256 characters, including item category, color, material, distinguishing features, and scene/location."
-        " Do not include emotions or extended narrative — only factual attributes."
-    )
-    if user_text:
-        combined = f"{base}\nUser description: {user_text}"
-    else:
-        combined = base
-
-    if image_b64:
-        combined = combined + \
-            "\n(Image attached; supplement features from the image.)"
-
-    return combined
-
-
-def _extract_json_object(text: str) -> dict[str, Any] | None:
-    """Best-effort parse for JSON outputs wrapped in markdown or extra text."""
-    if not text:
-        return None
-    content = text.strip()
-
-    # Remove fenced code blocks if present.
-    if content.startswith("```"):
-        content = re.sub(r"^```(?:json)?\\s*", "", content)
-        content = re.sub(r"\\s*```$", "", content)
-
-    try:
-        parsed = json.loads(content)
-        return parsed if isinstance(parsed, dict) else None
-    except Exception:
-        pass
-
-    match = re.search(r"\{[\s\S]*\}", content)
-    if not match:
-        return None
-
-    try:
-        parsed = json.loads(match.group(0))
-        return parsed if isinstance(parsed, dict) else None
-    except Exception:
-        return None
-
-
-def _to_str(value: Any) -> str:
-    if value is None:
-        return ""
-    return str(value).strip()
-
-
-def _normalize_markdown_text(text: str) -> str:
-    """Convert common escaped sequences to real control chars for cleaner markdown rendering."""
-    normalized = _to_str(text)
-    normalized = normalized.replace("\\r\\n", "\n")
-    normalized = normalized.replace("\\n", "\n")
-    normalized = normalized.replace("\\t", "\t")
-    return normalized
 
 
 def _build_search_reply_from_screening(parsed_query: str, screening: dict[str, Any]) -> str:
@@ -172,8 +78,8 @@ def _build_search_reply_from_screening(parsed_query: str, screening: dict[str, A
     ]
     for idx, item in enumerate(top, start=1):
         score = float(item.get("final_score", item.get("score", 0.0)) or 0.0)
-        label = _to_str(item.get("refine_label")) or "maybe"
-        desc = _to_str(item.get("description"))
+        label = to_str(item.get("refine_label")) or "maybe"
+        desc = to_str(item.get("description"))
         if len(desc) > 120:
             desc = desc[:120] + "..."
         lines.append(
@@ -208,7 +114,7 @@ def _compose_markdown_reply_with_llm(
         "Output requirements: "
         "1) Start with heading '## Search Assistant Reply'; "
         "2) If there are matches, include heading '### Top Matches' and a numbered list; "
-        "3) If no matches, include heading '### Next Steps' with 3 actionable bullets; "
+        "3) If no matches, include ###No Matches and in next line include heading '### Next Steps' with 3 actionable bullets; "
         "4) Keep tone supportive and practical; "
         "5) Do not output JSON or code fences."
     )
@@ -232,7 +138,7 @@ def _compose_markdown_reply_with_llm(
                 [block.get("text", "")
                  for block in text if isinstance(block, dict)]
             )
-        text = _normalize_markdown_text(_to_str(text))
+        text = normalize_markdown_text(to_str(text))
         return text or None
     except Exception:
         return None
@@ -252,8 +158,8 @@ def _normalize_history(history_raw: str | None) -> list[dict[str, str]]:
     for item in data[-8:]:
         if not isinstance(item, dict):
             continue
-        role = _to_str(item.get("role")).lower()
-        content = _to_str(item.get("content"))
+        role = to_str(item.get("role")).lower()
+        content = to_str(item.get("content"))
         if role in {"user", "assistant"} and content:
             normalized.append({"role": role, "content": content})
     return normalized
@@ -268,7 +174,7 @@ async def search_chat(
     top_n: int = Form(8),
     coarse_top_k: int = Form(30),
     min_coarse_score: float = Form(0.2),
-    current_user: User = Depends(_require_auth_user),
+    current_user: User = Depends(require_auth_user),
     db: Session = Depends(get_db),
 ):
     """Chat-style search endpoint with optional image input and user-friendly responses."""
@@ -277,7 +183,7 @@ async def search_chat(
         raise HTTPException(status_code=400, detail="message is required")
 
     try:
-        client = _get_client()
+        client = get_zhipu_client()
     except RuntimeError as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -285,7 +191,7 @@ async def search_chat(
     if image:
         try:
             body = await image.read()
-            image_b64 = _image_to_base64(body)
+            image_b64 = image_to_base64(body)
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"invalid image: {e}")
 
@@ -333,20 +239,20 @@ async def search_chat(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"parse error: {e}")
 
-    parsed_obj = _extract_json_object(_to_str(parse_raw)) or {}
+    parsed_obj = extract_json_object(to_str(parse_raw)) or {}
     parsed = SearchChatParseResult(
-        normalized_query=_to_str(parsed_obj.get(
+        normalized_query=to_str(parsed_obj.get(
             "normalized_query")) or user_message,
         should_search=bool(parsed_obj.get("should_search", False)),
-        follow_up_question=_to_str(parsed_obj.get("follow_up_question")),
-        user_reply=_to_str(parsed_obj.get("user_reply")),
+        follow_up_question=to_str(parsed_obj.get("follow_up_question")),
+        user_reply=to_str(parsed_obj.get("user_reply")),
     )
 
     if not parsed.should_search:
         friendly_reply = parsed.user_reply or "Thanks. I need one more detail before searching."
         if parsed.follow_up_question:
             friendly_reply = f"{friendly_reply}\n\n{parsed.follow_up_question}"
-        friendly_reply = _normalize_markdown_text(friendly_reply)
+        friendly_reply = normalize_markdown_text(friendly_reply)
         markdown_reply = _compose_markdown_reply_with_llm(
             client=client,
             parsed_query=parsed.normalized_query,
@@ -401,7 +307,7 @@ async def search_chat(
                     [block.get("text", "")
                      for block in image_prompt_text if isinstance(block, dict)]
                 )
-            image_prompt_text = _to_str(
+            image_prompt_text = to_str(
                 image_prompt_text) or parsed.normalized_query
 
             image_emb_resp = client.embeddings.create(
@@ -443,7 +349,7 @@ async def search_chat(
 
     # For actual search results, reply from verified screening output directly.
     # This avoids LLM paraphrasing that can hallucinate extra candidates.
-    assistant_reply = _normalize_markdown_text(
+    assistant_reply = normalize_markdown_text(
         _build_search_reply_from_screening(parsed.normalized_query, screening)
     )
 
@@ -463,21 +369,21 @@ async def request_embed_image(
     image: UploadFile | None = File(None),
     description: str | None = Form(None),
     request_id: int | None = Form(None),
-    current_user: User = Depends(_require_auth_user),
+    current_user: User = Depends(require_auth_user),
     db: Session = Depends(get_db),
 ):
     """Process optional image + text and save a 2048-dim image-derived prompt embedding to requests.features_img."""
     try:
-        client = _get_client()
+        client = get_zhipu_client()
     except RuntimeError as e:
         raise HTTPException(status_code=500, detail=str(e))
 
     image_b64 = None
     if image:
         body = await image.read()
-        image_b64 = _image_to_base64(body)
+        image_b64 = image_to_base64(body)
 
-    prompt = _build_prompt_from_image_and_text(image_b64, description)
+    prompt = build_prompt_from_image_and_text(image_b64, description)
 
     try:
         msg_content = [
@@ -552,12 +458,12 @@ async def request_embed_text(
     request: Request,
     text: str = Form(...),
     request_id: int | None = Form(None),
-    current_user: User = Depends(_require_auth_user),
+    current_user: User = Depends(require_auth_user),
     db: Session = Depends(get_db),
 ):
     """Convert user-supplied text to a 2048-dim embedding and save to requests.features_dis."""
     try:
-        client = _get_client()
+        client = get_zhipu_client()
         emb_resp = client.embeddings.create(
             model="embedding-3", input=text, dimensions=2048)
         vector = emb_resp.data[0].embedding
@@ -603,12 +509,12 @@ async def search_screen(
     top_n: int = Form(10),
     coarse_top_k: int = Form(30),
     min_coarse_score: float = Form(0.2),
-    current_user: User = Depends(_require_auth_user),
+    current_user: User = Depends(require_auth_user),
     db: Session = Depends(get_db),
 ):
     """Run two-stage screening and return screening summary + candidate matches."""
     try:
-        client = _get_client()
+        client = get_zhipu_client()
     except RuntimeError as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -629,7 +535,7 @@ async def search_screen(
     if image:
         try:
             body = await image.read()
-            image_b64 = _image_to_base64(body)
+            image_b64 = image_to_base64(body)
             msg_content = [
                 {"type": "text", "text": f"User text: {text}"},
                 {"type": "text", "text": "Summarize the visible lost-item information from the image or description into a single lost-and-found text no longer than 256 characters. Include category, color, material, key distinguishing features, and scene/location. Strictly no more than 256 characters."},

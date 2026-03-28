@@ -13,6 +13,8 @@
             max-width: 800px;
             margin: 0 auto;
             padding: 20px;
+            min-height: 100vh;
+            box-sizing: border-box;
         }
 
         .chat-container {
@@ -20,8 +22,12 @@
             border-radius: 8px;
             padding: 20px;
             margin-bottom: 20px;
-            height: 400px;
-            overflow-y: scroll;
+            height: min(72vh, 760px);
+            min-height: 420px;
+            overflow-y: auto;
+            overflow-x: hidden;
+            overscroll-behavior: contain;
+            scroll-behavior: smooth;
         }
 
         .message {
@@ -68,6 +74,7 @@
         /* Markdown content styling */
         .markdown-content {
             line-height: 1.6;
+            overflow-wrap: anywhere;
         }
 
         .markdown-content h1,
@@ -135,6 +142,18 @@
         const sendBtn = document.getElementById('send-btn');
         const reasoningToggle = document.getElementById('reasoning-toggle');
         let history = [];
+        const AUTO_SCROLL_THRESHOLD = 120;
+
+        function isNearBottom() {
+            const remaining = chatContainer.scrollHeight - chatContainer.scrollTop - chatContainer.clientHeight;
+            return remaining <= AUTO_SCROLL_THRESHOLD;
+        }
+
+        function scrollToBottom(force = false) {
+            if (force || isNearBottom()) {
+                chatContainer.scrollTop = chatContainer.scrollHeight;
+            }
+        }
 
         function addMessage(content, isUser) {
             const messageDiv = document.createElement('div');
@@ -152,7 +171,7 @@
             }
 
             chatContainer.appendChild(messageDiv);
-            chatContainer.scrollTop = chatContainer.scrollHeight;
+            scrollToBottom(true);
         }
 
         async function sendMessage() {
@@ -194,6 +213,7 @@
                 markdownDiv.className = 'markdown-content';
                 aiMessageDiv.appendChild(markdownDiv);
                 chatContainer.appendChild(aiMessageDiv);
+                scrollToBottom(true);
 
                 while (true) {
                     const { done, value } = await reader.read();
@@ -203,7 +223,7 @@
                     aiResponse += chunk;
                     // Render Markdown in real time
                     markdownDiv.innerHTML = marked.parse(aiResponse);
-                    chatContainer.scrollTop = chatContainer.scrollHeight;
+                    scrollToBottom();
                 }
 
                 // Add AI response to history

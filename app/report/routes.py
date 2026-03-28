@@ -2,15 +2,12 @@ from fastapi import APIRouter, Request, UploadFile, File, Form, Depends, HTTPExc
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse, JSONResponse
 import os
-import base64
 import json
-from io import BytesIO
-from PIL import Image
-from zhipuai import ZhipuAI
 from service.database import get_db
 from sqlalchemy.orm import Session
 from service.models import Report, User, Request as RequestModel
-import service.security as security
+from service.auth_dependencies import require_auth_user
+from service.ai_utils import get_zhipu_client, image_to_base64, build_prompt_from_image_and_text
 from service.email import send_match_notification_email
 import numpy as np
 
@@ -146,26 +143,6 @@ def _notify_best_request_match(db: Session, report_row: Report, threshold: float
     }
 
 
-def _require_auth_user(request: Request, db: Session = Depends(get_db)) -> User:
-    token = request.headers.get(
-        "Authorization", "").replace("Bearer ", "").strip()
-    if not token:
-        raise HTTPException(status_code=401, detail="No access token provided")
-
-    payload = security.decode_access_token(token)
-    if not payload:
-        raise HTTPException(status_code=401, detail="Invalid access token")
-
-    email = payload.get("sub")
-    if not email:
-        raise HTTPException(status_code=401, detail="Invalid access token")
-
-    user = db.query(User).filter(User.email == email).first()
-    if not user or not user.is_active:
-        raise HTTPException(status_code=401, detail="User not authenticated")
-    return user
-
-
 @report_router.get("/", response_class=HTMLResponse)
 async def report_page(request: Request):
     return templates.TemplateResponse(request, "report/report.html", {"request": request})
@@ -178,47 +155,11 @@ async def report_submit(
     time: str = Form(None),
     location: str = Form(None),
     description: str = Form(None),
-    current_user: User = Depends(_require_auth_user),
+    current_user: User = Depends(require_auth_user),
     db: Session = Depends(get_db)
 ):
     # 这里可以添加处理上传文件和存储信息的逻辑
     return templates.TemplateResponse(request, "report/report.html", {"request": request, "success": True})
-
-
-def _get_client():
-    api_key = os.getenv("ZHIPUAI_API_KEY")
-    if not api_key:
-        raise RuntimeError("ZHIPUAI_API_KEY is not set in environment")
-    return ZhipuAI(api_key=api_key)
-
-
-def _image_to_base64(image_bytes: bytes) -> str:
-    img = Image.open(BytesIO(image_bytes))
-    if img.mode == 'RGBA':
-        img = img.convert('RGB')
-    img.thumbnail((1024, 1024))
-    buf = BytesIO()
-    img.save(buf, format='JPEG', quality=85)
-    return base64.b64encode(buf.getvalue()).decode('utf-8')
-
-
-def _build_prompt_from_image_and_text(image_b64: str | None, user_text: str | None) -> str:
-    base = (
-        "Please generate a lost-and-found description no longer than 256 characters, including item category, color, material, distinguishing features, and scene/location."
-        " Do not include emotions or extended narrative — only factual attributes."
-    )
-    if user_text:
-        # use user's text as additional context
-        combined = f"{base}\nUser description: {user_text}"
-    else:
-        combined = base
-
-    if image_b64:
-        combined = combined + \
-            "\n(Image attached; supplement features from the image.)"
-
-    # ensure <= 256 chars when returned; we'll ask the model for that
-    return combined
 
 
 @report_router.post("/embed_image")
@@ -227,23 +168,23 @@ async def report_embed_image(
     image: UploadFile | None = File(None),
     description: str | None = Form(None),
     report_id: int | None = Form(None),
-    current_user: User = Depends(_require_auth_user),
+    current_user: User = Depends(require_auth_user),
     db: Session = Depends(get_db),
 ):
     """Accept optional image and description, produce a <=256-char lost-and-found prompt via vision model
     and convert it to a 2048-dim embedding saved to the `reports` table as `features_img`.
     """
     try:
-        client = _get_client()
+        client = get_zhipu_client()
     except RuntimeError as e:
         raise HTTPException(status_code=500, detail=str(e))
 
     image_b64 = None
     if image:
         body = await image.read()
-        image_b64 = _image_to_base64(body)
+        image_b64 = image_to_base64(body)
 
-    prompt = _build_prompt_from_image_and_text(image_b64, description)
+    prompt = build_prompt_from_image_and_text(image_b64, description)
 
     # call vision chat model to get concise description (<=256 chars)
     try:
@@ -337,12 +278,12 @@ async def report_embed_text(
     request: Request,
     text: str = Form(...),
     report_id: int | None = Form(None),
-    current_user: User = Depends(_require_auth_user),
+    current_user: User = Depends(require_auth_user),
     db: Session = Depends(get_db),
 ):
     """Convert supplied text to a 2048-dim embedding and save to reports.features_dis."""
     try:
-        client = _get_client()
+        client = get_zhipu_client()
         emb_resp = client.embeddings.create(
             model="embedding-3", input=text, dimensions=2048)
         vector = emb_resp.data[0].embedding
