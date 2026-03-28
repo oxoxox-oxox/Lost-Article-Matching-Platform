@@ -378,6 +378,11 @@
 
     let selectedImage = null;
     const chatHistory = [];
+    // Placeholder routes: teammates can implement these pages later.
+    const OUTCOME_REDIRECTS = {
+        matched: '/search/match-result',
+        impossible: '/search/no-match'
+    };
 
     function getLoginToken() {
         return localStorage.getItem('token') || localStorage.getItem('access_token') || '';
@@ -495,6 +500,67 @@
         pendingImage.style.display = 'flex';
     }
 
+    function toNumber(value, fallback = 0) {
+        const n = Number(value);
+        return Number.isFinite(n) ? n : fallback;
+    }
+
+    function detectSearchOutcome(data) {
+        const shouldSearch = Boolean(data?.parsed?.should_search);
+        if (!shouldSearch) {
+            return null;
+        }
+
+        const screening = data?.screening || {};
+        const matches = Array.isArray(screening.matches) ? screening.matches : [];
+        const summary = screening.summary || {};
+        const coarsePass = toNumber(summary.coarse_pass, 0);
+        const topScore = matches.length > 0
+            ? toNumber(matches[0].final_score ?? matches[0].score, 0)
+            : 0;
+
+        if (matches.length > 0 && topScore >= 0.72) {
+            return {
+                title: 'Potential Match Found',
+                type: 'success',
+                buttonText: 'View Match Details',
+                redirectUrl: data?.next_page_url || OUTCOME_REDIRECTS.matched,
+                html: '<p class="modal-intro">Great news. We found a high-confidence candidate for your item. You can continue to the next page for confirmation details.</p>'
+            };
+        }
+
+        if (matches.length === 0 && coarsePass === 0) {
+            return {
+                title: 'No Likely Match Right Now',
+                type: 'warning',
+                buttonText: 'Go To Next Step',
+                redirectUrl: data?.next_page_url || OUTCOME_REDIRECTS.impossible,
+                html: '<p class="modal-intro">At this stage, the system considers a match unlikely. Continue to the next page for fallback options and follow-up actions.</p>'
+            };
+        }
+
+        return null;
+    }
+
+    async function showOutcomeModal(outcome) {
+        if (!outcome || typeof window.showAppModal !== 'function') {
+            return;
+        }
+
+        const action = await window.showAppModal({
+            title: outcome.title,
+            html: outcome.html,
+            type: outcome.type,
+            okText: outcome.buttonText,
+            okClass: 'app-modal-btn-cta',
+            showCancel: false
+        });
+
+        if (action === 'ok' && outcome.redirectUrl) {
+            window.location.href = outcome.redirectUrl;
+        }
+    }
+
     async function sendMessage() {
         const message = chatInput.value.trim();
         if (!message && !selectedImage) {
@@ -538,6 +604,9 @@
             const reply = data.assistant_reply || 'I have processed your request.';
             appendMessage('assistant', reply, data);
             chatHistory.push({ role: 'assistant', content: reply });
+
+            const outcome = detectSearchOutcome(data);
+            await showOutcomeModal(outcome);
         } catch (error) {
             appendMessage('assistant', error.message || 'Request failed. Please try again.');
         } finally {

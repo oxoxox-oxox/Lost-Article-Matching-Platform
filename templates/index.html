@@ -165,6 +165,21 @@
             filter: brightness(0.96);
         }
 
+        .app-modal-btn-cta {
+            background: linear-gradient(135deg, #22c55e 0%, #14b8a6 48%, #0ea5e9 100%);
+            color: #ffffff;
+            padding: 12px 22px;
+            border-radius: 999px;
+            font-weight: 700;
+            letter-spacing: 0.01em;
+            box-shadow: 0 10px 28px rgba(20, 184, 166, 0.32);
+        }
+
+        .app-modal-btn-cta:hover {
+            filter: brightness(1.02);
+            transform: translateY(-1px);
+        }
+
         .app-modal-success .app-modal-header {
             background: linear-gradient(90deg, #dcfce7 0%, #f0fdf4 100%);
             color: #14532d;
@@ -529,6 +544,7 @@
                 html = '',
                 type = 'default',
                 okText = 'OK',
+                okClass = '',
                 cancelText = 'Cancel',
                 showCancel = false
             } = {}) {
@@ -544,6 +560,10 @@
                     bodyEl.textContent = message;
                 }
                 okBtn.textContent = okText;
+                okBtn.className = 'app-modal-btn';
+                if (okClass) {
+                    okBtn.classList.add(okClass);
+                }
                 cancelBtn.textContent = cancelText;
                 cancelBtn.style.display = showCancel ? 'inline-block' : 'none';
 

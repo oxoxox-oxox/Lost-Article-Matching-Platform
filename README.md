@@ -1,81 +1,77 @@
 # Lost Article Matching Platform (LAMP)
 
-Lost Article Matching Platform helps students and campus staff recover lost items more efficiently.
+LAMP is a campus lost-and-found matching platform designed to connect finders and owners faster, improve matching accuracy, and shorten recovery time through automated notifications.
 
-Users who find an item can upload photos and details. Users who lose an item can submit a request with text and image information. The system uses text and image embeddings to find potential matches and notify users when confidence is high.
+## Highlights
 
-## Features
-
-- User registration, email verification, and login
-- Account pages for login, registration, and profile display
-- Lost item reporting workflow
-- Lost item search workflow
-- Text and image embedding for matching
-- Two-stage screening for candidate retrieval
-- AI chat endpoint for Q&A/reasoning output
-- Email notifications for verification and high-confidence matches
+- Account system: registration, email verification code, login, and profile page
+- Found item reporting: supports text and image feature storage
+- Search assistant: chat-style input with multi-turn history and image upload
+- Multimodal matching: text vectors + image vectors with two-stage screening (coarse + refine)
+- Auto notification: sends email alerts when high-confidence candidates are found
+- Frontend UX: Jinja2-based pages with unified modal/dialog interactions
 
 ## Tech Stack
 
 - Backend: FastAPI, Uvicorn
 - Database: MySQL, SQLAlchemy
-- Templates: Jinja2
-- Auth and security: JWT (python-jose), password hashing (passlib), anti-bot rate limiting
-- AI and matching: OpenAI-compatible client, ZhipuAI, NumPy, SciPy, Sentence Transformers, PyTorch, Pillow
+- Templates and static assets: Jinja2, HTML/CSS/JS
+- Auth and security: JWT (python-jose), Passlib, rate-limiting and honeypot protection
+- AI and vector processing: OpenAI-compatible API, ZhipuAI, NumPy, SciPy, Sentence Transformers, PyTorch, Pillow
 
 ## Project Structure
 
 ```text
+.
 |-- app/
-|   |-- account/          # Account page routes
-|   |-- ai/               # AI chat routes
-|   |-- auth/             # Auth and verification routes
-|   |-- report/           # Report item routes and matching notification logic
-|   |-- search/           # Search routes and two-stage screening
-|   `-- __init__.py       # Router exports
-|-- model/
-|   |-- Cross-Modal_Finder/
-|   `-- item_embedding_engine/
+|   |-- auth/            # Authentication and verification code routes
+|   |-- account/         # Account page routes
+|   |-- ai/              # AI chat routes
+|   |-- search/          # Search chat, screening, and matching routes
+|   |-- report/          # Found-item report and notification routes
+|   `-- __init__.py      # Router exports
 |-- service/
-|   |-- models/           # SQLAlchemy models
-|   |-- schemas/          # Pydantic schemas
-|   |-- database.py       # DB engine/session setup
-|   |-- crud.py           # Data access logic
-|   |-- security.py       # JWT and password utilities
-|   |-- email.py          # Email sending helpers
-|   `-- antibot.py        # Basic anti-abuse checks
-|-- static/               # CSS/JS/assets
-|-- templates/            # Jinja2 HTML templates
-|-- main.py               # FastAPI app entry point
-|-- reset.py              # Optional reset script
-`-- requirements.txt      # Python dependencies
+|   |-- models/          # SQLAlchemy models
+|   |-- schemas/         # Pydantic schemas
+|   |-- database.py      # DB engine/session setup
+|   |-- security.py      # JWT and password utilities
+|   |-- email.py         # Email helpers
+|   `-- antibot.py       # Anti-abuse strategy
+|-- model/               # Additional model and cross-modal engine code
+|-- templates/           # Jinja2 templates
+|-- static/              # Static assets (CSS/JS/images)
+|-- main.py              # Application entry point
+|-- reset.py             # MySQL reset script
+|-- Dockerfile
+|-- docker-compose.yml
+`-- requirements.txt
 ```
 
-## Main Routes
+## Core Routes
 
-- Home page: /
-- Authentication: /auth
-- Account pages: /account
-- Report pages and APIs: /report
-- Search pages and APIs: /search
-- AI chat page and API: /ai/chat
+- `/`: Home page
+- `/auth/*`: Register, login, verification code, current user
+- `/account/*`: Account-related pages (login/register/profile)
+- `/report/*`: Found-item report and text/image vector storage
+- `/search/*`: Search page, chat search, two-stage screening
+- `/ai/chat`: AI chat page and endpoint
 
-## Prerequisites
+## Requirements
 
-- Python 3.9 or later
-- MySQL 8.0 or later
-- Docker Desktop 
+- Python 3.10+
+- MySQL 8.0+
+- Optional: Docker / Docker Compose
 
-## Installation
+## Local Development
 
-1. Clone the repository:
+1. Clone the repository
 
 ```bash
 git clone https://github.com/oxoxox-oxox/Lost-Article-Matching-Platform.git
 cd Lost-Article-Matching-Platform
 ```
 
-1. Create and activate a virtual environment:
+1. Create and activate a virtual environment
 
 ```bash
 python -m venv .venv
@@ -83,96 +79,112 @@ python -m venv .venv
 .venv\Scripts\Activate.ps1
 ```
 
-1. Install dependencies:
+1. Install dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-## Configuration
-
-Create a .env file in the project root:
+1. Configure environment variables (create `.env` in the project root)
 
 ```env
+# Database
 DATABASE_URL=mysql+pymysql://<username>:<password>@localhost:3306/<database_name>
 
+# Auth
 SECRET_KEY=<your_secret_key>
 ALGORITHM=HS256
 ACCESS_TOKEN_EXPIRE_MINUTES=30
 
+# Email
 SMTP_SERVER=<your_smtp_server>
 SMTP_PORT=465
 SMTP_USERNAME=<your_email_username>
 SMTP_PASSWORD=<your_email_password>
 SENDER_EMAIL=<your_sender_email>
 
+# AI
 OPENAI_API_KEY=<your_openai_compatible_api_key>
 ZHIPUAI_API_KEY=<your_zhipuai_api_key>
 
+# Business
 MATCH_NOTIFY_THRESHOLD=0.80
 ```
 
-Notes:
-
-- OPENAI_API_KEY is used by the AI chat module.
-- ZHIPUAI_API_KEY is used for multimodal summary and embedding generation in report/search workflows.
-- MATCH_NOTIFY_THRESHOLD controls when automatic match notification emails are sent.
-- For Docker Compose, `DATABASE_URL` is injected automatically and points to the `db` service.
-
-## Run the Project
-
-Recommended (development):
+1. Start the service
 
 ```bash
 uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-Then open:
-
-- <http://127.0.0.1:8000/>
-
-Alternative:
-
-- Running python main.py starts Uvicorn on port 80 as defined in main.py.
+Open: <http://127.0.0.1:8000/>
 
 ## Run with Docker
 
-1. (Optional) Keep your existing `.env` and set business/API keys there, such as `OPENAI_API_KEY`, `ZHIPUAI_API_KEY`, and email settings.
+1. Prepare `.env` (recommended: configure at least AI keys and SMTP)
 
-1. Build and start services:
+1. Build and start
 
 ```bash
 docker compose up -d --build
 ```
 
-1. Open the app:
-
-- <http://127.0.0.1:8000/>
+1. Open: <http://127.0.0.1:8000/>
 
 Useful commands:
 
 ```bash
-# View logs
+# View app logs
 docker compose logs -f app
 
-# Stop all services
+# Stop services
 docker compose down
 
-# Stop and remove DB volume (clears data)
+# Stop and remove DB volume (clear data)
 docker compose down -v
 ```
 
-Default ports:
+Default port mapping:
 
-- App: `8000` (host) -> `8000` (container)
-- MySQL: `3307` (host) -> `3306` (container)
+- App: `8000` -> `8000`
+- MySQL: `3307` -> `3306`
 
-## Development Notes
+## Database Reset
 
-- On startup, SQLAlchemy creates tables automatically using Base.metadata.create_all.
-- CORS is currently configured to allow all origins for easier development.
-- Route modules are registered in main.py via router exports from app/__init__.py.
+If you need to quickly clear and recreate the database schema:
+
+```bash
+python reset.py
+```
+
+Notes:
+
+- `reset.py` reads `DATABASE_URL`
+- MySQL only
+- It drops and recreates the target database, so do not run in production unless intended
+
+## Implementation Notes
+
+- On startup, `Base.metadata.create_all(bind=engine)` runs to auto-create tables
+- CORS is currently development-friendly (`allow_origins=["*"]`)
+- Search chat endpoints return parsed intent + screening results for frontend modal/redirect logic
+- Report endpoints can trigger potential-match email notifications when threshold is met
+
+## FAQ
+
+1. Email cannot be sent after startup
+
+- Check whether `SMTP_SERVER/PORT/USERNAME/PASSWORD/SENDER_EMAIL` are fully configured
+- Port 465 usually requires SSL; other ports should support STARTTLS
+
+1. AI key errors from APIs
+
+- Confirm both `OPENAI_API_KEY` and `ZHIPUAI_API_KEY` are set in `.env`
+
+1. Database connection failure
+
+- Check `DATABASE_URL`, MySQL service status, account permissions, and port settings
 
 ## License
 
-This project is licensed under the MIT License. See LICENSE for details.
+MIT License. See LICENSE.
