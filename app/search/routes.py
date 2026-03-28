@@ -13,15 +13,15 @@ from sqlalchemy.orm import Session
 from service.models import Request as RequestModel
 
 search_router = APIRouter(
-    prefix="/request",
-    tags=["Request"]
+    prefix="/search",
+    tags=["Search"]
 )
 templates = Jinja2Templates(directory="templates")
 
 
 @search_router.get("/", response_class=HTMLResponse)
 async def search_page(request: Request):
-    return templates.TemplateResponse("search/search.html", {"request": request})
+    return templates.TemplateResponse(request, "search/search.html", {"request": request})
 
 
 @search_router.post("/")
@@ -32,7 +32,7 @@ async def search_submit(
     db: Session = Depends(get_db)
 ):
     # Logic to handle file uploads and search can be added here
-    return templates.TemplateResponse("search/search.html", {"request": request, "success": True})
+    return templates.TemplateResponse(request, "search/search.html", {"request": request, "success": True})
 
 
 def _get_client():

@@ -81,12 +81,12 @@
         Found item information submitted successfully!
     </div>
     {% endif %}
-    <form action="/report" method="post" enctype="multipart/form-data">
+    <form id="reportForm" action="/report/" method="post" enctype="multipart/form-data">
         <div class="form-group">
             <label for="image">Upload Image <span style="color: red;">*</span></label>
             <div class="file-upload" onclick="document.getElementById('image').click();">
                 <p>Click or drag files here to upload</p>
-                <input type="file" id="image" name="image" accept="image/*" required>
+                <input type="file" id="image" name="image" accept="image/*">
             </div>
         </div>
         <div class="form-group">
@@ -103,18 +103,102 @@
             <textarea id="description" name="description" required
                 placeholder="Please describe the found item in detail..."></textarea>
         </div>
-        <button type="submit">Submit Found Item</button>
+        <button type="submit" id="reportSubmitBtn">Submit Found Item</button>
     </form>
+    <div id="reportApiResult" class="success-message" style="display:none;"></div>
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script>
+    const reportForm = document.getElementById('reportForm');
+    const reportSubmitBtn = document.getElementById('reportSubmitBtn');
+    const reportApiResult = document.getElementById('reportApiResult');
+
     document.getElementById('image').addEventListener('change', function (e) {
         const file = e.target.files[0];
         if (file) {
             const uploadArea = document.querySelector('.file-upload p');
             uploadArea.textContent = `Selected file: ${file.name}`;
+        }
+    });
+
+    function showReportResult(message, isError = false) {
+        reportApiResult.style.display = 'block';
+        reportApiResult.textContent = message;
+        if (isError) {
+            reportApiResult.style.backgroundColor = '#fee2e2';
+            reportApiResult.style.color = '#991b1b';
+            reportApiResult.style.border = '1px solid #fecaca';
+        } else {
+            reportApiResult.style.backgroundColor = '#d4edda';
+            reportApiResult.style.color = '#155724';
+            reportApiResult.style.border = 'none';
+        }
+    }
+
+    reportForm.addEventListener('submit', async function (e) {
+        e.preventDefault();
+
+        const description = document.getElementById('description').value.trim();
+        const location = document.getElementById('location').value.trim();
+        const time = document.getElementById('time').value;
+        const imageFile = document.getElementById('image').files[0] || null;
+
+        if (!description) {
+            showReportResult('Description is required.', true);
+            return;
+        }
+
+        // Include location/time in the text payload to keep context for embedding.
+        const composedText = [
+            description,
+            location ? `Location: ${location}` : '',
+            time ? `Time: ${time}` : ''
+        ].filter(Boolean).join(' | ');
+
+        reportSubmitBtn.disabled = true;
+        reportSubmitBtn.textContent = 'Submitting...';
+
+        try {
+            const outputs = [];
+
+            const textForm = new FormData();
+            textForm.append('text', composedText);
+            const textResp = await fetch('/report/embed_text', {
+                method: 'POST',
+                body: textForm
+            });
+            if (!textResp.ok) {
+                const err = await textResp.json().catch(() => ({}));
+                throw new Error(err.detail || 'Text API request failed');
+            }
+            const textData = await textResp.json();
+            outputs.push(`Text saved: id=${textData.id}, vector_len=${textData.vector_len}.`);
+
+            if (imageFile) {
+                const imageForm = new FormData();
+                imageForm.append('image', imageFile);
+                imageForm.append('description', composedText);
+
+                const imageResp = await fetch('/report/embed_image', {
+                    method: 'POST',
+                    body: imageForm
+                });
+                if (!imageResp.ok) {
+                    const err = await imageResp.json().catch(() => ({}));
+                    throw new Error(err.detail || 'Image API request failed');
+                }
+                const imageData = await imageResp.json();
+                outputs.push(`Image saved: id=${imageData.id}, vector_len=${imageData.vector_len}.`);
+            }
+
+            showReportResult(outputs.join(' '));
+        } catch (error) {
+            showReportResult(error.message || 'Submit failed', true);
+        } finally {
+            reportSubmitBtn.disabled = false;
+            reportSubmitBtn.textContent = 'Submit Found Item';
         }
     });
 </script>
