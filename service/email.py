@@ -192,3 +192,148 @@ LAMP Team
     except Exception:
         print(f"Failed: Email to {email}")
         return False
+
+
+def send_match_notification_email(email, report_description, request_description, score):
+    """Send a match-notification email when a found report likely matches a lost request."""
+    if not all([SMTP_SERVER, SMTP_PORT, SMTP_USERNAME, SMTP_PASSWORD, SENDER_EMAIL]):
+        raise ValueError(
+            "SMTP configuration is incomplete. Please check environment variables.")
+
+    msg = MIMEMultipart('alternative')
+    msg['Subject'] = "LAMP Potential Match Found"
+    msg['From'] = SENDER_EMAIL
+    msg['To'] = email
+
+    score_pct = f"{max(0.0, min(1.0, float(score))) * 100:.2f}%"
+    report_desc = report_description or "(No report description)"
+    request_desc = request_description or "(No request description)"
+
+    text = f"""Hello,
+
+We found a potential match for your lost-item request on LAMP.
+
+Match confidence: {score_pct}
+
+Your request:
+{request_desc}
+
+Found-item report:
+{report_desc}
+
+Please log in to LAMP and review the details.
+
+Best regards,
+LAMP Team
+"""
+
+    html = f"""
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>LAMP Potential Match Found</title>
+        <style>
+            body {{
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+                background-color: #f8fafc;
+                margin: 0;
+                padding: 0;
+            }}
+            .container {{
+                max-width: 640px;
+                margin: 0 auto;
+                padding: 20px;
+            }}
+            .email-card {{
+                background-color: #ffffff;
+                border-radius: 8px;
+                box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+                padding: 28px;
+            }}
+            .title {{
+                margin: 0 0 8px;
+                color: #0f172a;
+                font-size: 24px;
+            }}
+            .subtitle {{
+                margin: 0 0 18px;
+                color: #475569;
+            }}
+            .score {{
+                background: #eff6ff;
+                color: #1d4ed8;
+                border-radius: 8px;
+                padding: 12px;
+                font-weight: 600;
+                margin-bottom: 16px;
+            }}
+            .block {{
+                border: 1px solid #e2e8f0;
+                border-radius: 8px;
+                padding: 12px;
+                margin-bottom: 12px;
+            }}
+            .label {{
+                color: #334155;
+                font-weight: 600;
+                margin-bottom: 6px;
+            }}
+            .content {{
+                color: #475569;
+                line-height: 1.6;
+                white-space: pre-wrap;
+                word-break: break-word;
+            }}
+            .footer {{
+                margin-top: 18px;
+                color: #64748b;
+                font-size: 14px;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="email-card">
+                <h1 class="title">Potential Match Found</h1>
+                <p class="subtitle">We found a likely match for your lost-item request on LAMP.</p>
+                <div class="score">Match confidence: {score_pct}</div>
+
+                <div class="block">
+                    <div class="label">Your request</div>
+                    <div class="content">{request_desc}</div>
+                </div>
+
+                <div class="block">
+                    <div class="label">Found-item report</div>
+                    <div class="content">{report_desc}</div>
+                </div>
+
+                <p class="footer">Please log in to LAMP and review the details.</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
+    part1 = MIMEText(text, 'plain', 'utf-8')
+    part2 = MIMEText(html, 'html', 'utf-8')
+    msg.attach(part1)
+    msg.attach(part2)
+
+    try:
+        if SMTP_PORT == 465:
+            with smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT) as server:
+                server.login(SMTP_USERNAME, SMTP_PASSWORD)
+                server.send_message(msg)
+        else:
+            with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+                server.starttls()
+                server.login(SMTP_USERNAME, SMTP_PASSWORD)
+                server.send_message(msg)
+        print(f"Success: Match notification to {email}")
+        return True
+    except Exception:
+        print(f"Failed: Match notification to {email}")
+        return False

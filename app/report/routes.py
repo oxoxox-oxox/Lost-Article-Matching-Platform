@@ -9,14 +9,141 @@ from PIL import Image
 from zhipuai import ZhipuAI
 from service.database import get_db
 from sqlalchemy.orm import Session
-from service.models import Report, User
+from service.models import Report, User, Request as RequestModel
 import service.security as security
+from service.email import send_match_notification_email
+import numpy as np
 
 report_router = APIRouter(
     prefix="/report",
     tags=["Report"]
 )
 templates = Jinja2Templates(directory="templates")
+
+
+def _parse_vector(v: str | None):
+    if not v:
+        return None
+    try:
+        return json.loads(v)
+    except Exception:
+        return None
+
+
+def _cosine_similarity(a, b) -> float:
+    if a is None or b is None:
+        return -1.0
+    va = np.array(a, dtype=float)
+    vb = np.array(b, dtype=float)
+    if va.size == 0 or vb.size == 0:
+        return -1.0
+    denom = (np.linalg.norm(va) * np.linalg.norm(vb))
+    if denom == 0:
+        return -1.0
+    return float(np.dot(va, vb) / denom)
+
+
+def _best_similarity(report_row: Report, request_row: RequestModel) -> float:
+    r_text = _parse_vector(report_row.features_dis)
+    r_img = _parse_vector(report_row.features_img)
+    q_text = _parse_vector(request_row.features_dis)
+    q_img = _parse_vector(request_row.features_img)
+
+    scores = [
+        _cosine_similarity(r_text, q_text),
+        _cosine_similarity(r_img, q_img),
+        _cosine_similarity(r_text, q_img),
+        _cosine_similarity(r_img, q_text),
+    ]
+    return max(scores)
+
+
+def _normalize_text_for_compare(text: str | None) -> str:
+    if not text:
+        return ""
+    return " ".join(str(text).strip().lower().split())
+
+
+def _get_notify_threshold() -> float:
+    try:
+        return float(os.getenv("MATCH_NOTIFY_THRESHOLD", "0.80"))
+    except Exception:
+        return 0.80
+
+
+def _notify_best_request_match(db: Session, report_row: Report, threshold: float | None = None) -> dict:
+    """Find the best pending request for a report and send notification email if score passes threshold."""
+    threshold = _get_notify_threshold() if threshold is None else threshold
+
+    if report_row.status:
+        return {"sent": False, "reason": "report_already_processed", "best_score": None, "threshold": threshold}
+    if not report_row.features_dis and not report_row.features_img:
+        return {"sent": False, "reason": "report_has_no_vectors", "best_score": None, "threshold": threshold}
+
+    candidates = db.query(RequestModel).filter(
+        RequestModel.status == False,  # noqa: E712
+        RequestModel.user_id.isnot(None)
+    ).all()
+    best_req = None
+    best_score = -1.0
+
+    report_text = _normalize_text_for_compare(report_row.description)
+
+    for req in candidates:
+        score = _best_similarity(report_row, req)
+        req_text = _normalize_text_for_compare(req.description)
+        # If descriptions are exactly the same after normalization, give a small confidence boost.
+        if report_text and req_text and report_text == req_text:
+            score = min(1.0, score + 0.05)
+        if score > best_score:
+            best_score = score
+            best_req = req
+
+    if best_req is None:
+        return {"sent": False, "reason": "no_candidate_requests", "best_score": None, "threshold": threshold}
+    if best_score < threshold:
+        return {
+            "sent": False,
+            "reason": "score_below_threshold",
+            "best_score": best_score,
+            "threshold": threshold,
+            "best_request_id": best_req.id,
+        }
+    if not best_req.user_id:
+        return {"sent": False, "reason": "best_request_no_user", "best_score": best_score, "threshold": threshold}
+
+    target_user = db.query(User).filter(User.id == best_req.user_id).first()
+    if not target_user or not target_user.email:
+        return {"sent": False, "reason": "target_user_email_missing", "best_score": best_score, "threshold": threshold}
+
+    sent = send_match_notification_email(
+        email=target_user.email,
+        report_description=report_row.description,
+        request_description=best_req.description,
+        score=best_score,
+    )
+
+    # Mark as processed to avoid repeated notifications for the same report.
+    if sent:
+        report_row.status = True
+        db.commit()
+        return {
+            "sent": True,
+            "reason": "mail_sent",
+            "best_score": best_score,
+            "threshold": threshold,
+            "best_request_id": best_req.id,
+            "target_email": target_user.email,
+        }
+
+    return {
+        "sent": False,
+        "reason": "mail_send_failed",
+        "best_score": best_score,
+        "threshold": threshold,
+        "best_request_id": best_req.id,
+        "target_email": target_user.email,
+    }
 
 
 def _require_auth_user(request: Request, db: Session = Depends(get_db)) -> User:
@@ -190,7 +317,19 @@ async def report_embed_image(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"db error: {e}")
 
-    return JSONResponse({"id": record.id, "description": text_out, "vector_len": len(vector)})
+    notify_result = None
+    try:
+        notify_result = _notify_best_request_match(db, record)
+    except Exception:
+        # Do not block normal API response if mail sending fails.
+        notify_result = {"sent": False, "reason": "notify_exception"}
+
+    return JSONResponse({
+        "id": record.id,
+        "description": text_out,
+        "vector_len": len(vector),
+        "match_notification": notify_result,
+    })
 
 
 @report_router.post("/embed_text")
@@ -234,4 +373,15 @@ async def report_embed_text(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"db error: {e}")
 
-    return JSONResponse({"id": record.id, "vector_len": len(vector)})
+    notify_result = None
+    try:
+        notify_result = _notify_best_request_match(db, record)
+    except Exception:
+        # Do not block normal API response if mail sending fails.
+        notify_result = {"sent": False, "reason": "notify_exception"}
+
+    return JSONResponse({
+        "id": record.id,
+        "vector_len": len(vector),
+        "match_notification": notify_result,
+    })
