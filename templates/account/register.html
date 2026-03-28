@@ -1,156 +1,194 @@
-{% extends "index.html" %}
-
-{% block title %}Registration{% endblock %}
-
-{% block content %}
+{% extends "index.html" %} {% block title %}Registration{% endblock %} {% block
+content %}
 <div class="card">
-    <div class="card-header">
-        <h2>Registration</h2>
-    </div>
-    <div class="card-body">
-        <form id="registerForm">
-            <div class="form-group">
-                <label for="username">Username</label>
-                <input type="text" id="username" name="username" required placeholder="Enter your username">
-                <div id="username-error" class="error-message"></div>
-            </div>
-            <div class="form-group">
-                <label for="email">Email</label>
-                <input type="email" id="email" name="email" required placeholder="Enter your email">
-                <div id="email-error" class="error-message"></div>
-            </div>
-            <div class="form-group">
-                <label for="password">Password</label>
-                <input type="password" id="password" name="password" required placeholder="Enter your password">
-            </div>
-            <div class="form-group">
-                <label for="confirm_password">Confirm Password</label>
-                <input type="password" id="confirm_password" name="confirm_password" required
-                    placeholder="Confirm your password">
-            </div>
-            <div class="form-group checkbox-group">
-                <input type="checkbox" id="agree" name="agree" required>
-                <label for="agree">I agree to the <a href="#">User Agreement</a> and <a href="#">Privacy
-                        Policy</a></label>
-            </div>
-            <div class="form-group">
-                <input type="text" id="honeypot" name="honeypot" style="display: none;">
-            </div>
-            <button type="submit" class="btn btn-primary">Register</button>
-        </form>
-    </div>
-    <div class="card-footer">
-        <p>Already have an account?<a href="/account/login">Login</a></p>
-    </div>
+  <div class="card-header">
+    <h2>Registration</h2>
+  </div>
+  <div class="card-body">
+    <form id="registerForm">
+      <div class="form-group">
+        <label for="username">Username</label>
+        <input
+          type="text"
+          id="username"
+          name="username"
+          required
+          placeholder="Enter your username"
+        />
+        <div id="username-error" class="error-message"></div>
+      </div>
+      <div class="form-group">
+        <label for="email">Email</label>
+        <input
+          type="email"
+          id="email"
+          name="email"
+          required
+          placeholder="Enter your email"
+        />
+        <div id="email-error" class="error-message"></div>
+      </div>
+      <div class="form-group">
+        <label for="password">Password</label>
+        <input
+          type="password"
+          id="password"
+          name="password"
+          required
+          placeholder="Enter your password"
+        />
+      </div>
+      <div class="form-group">
+        <label for="confirm_password">Confirm Password</label>
+        <input
+          type="password"
+          id="confirm_password"
+          name="confirm_password"
+          required
+          placeholder="Confirm your password"
+        />
+      </div>
+      <div class="form-group checkbox-group">
+        <input type="checkbox" id="agree" name="agree" required />
+        <label for="agree"
+          >I agree to the
+          <a href="/static/doc/terms.html" target="_blank">User Agreement</a>
+          and
+          <a href="/static/doc/privacy.html" target="_blank"
+            >Privacy Policy</a
+          ></label
+        >
+      </div>
+      <div class="form-group">
+        <input
+          type="text"
+          id="honeypot"
+          name="honeypot"
+          style="display: none"
+        />
+      </div>
+      <button type="submit" class="btn btn-primary">Register</button>
+    </form>
+  </div>
+  <div class="card-footer">
+    <p>Already have an account?<a href="/account/login">Login</a></p>
+  </div>
 </div>
-{% endblock %}
-
-{% block scripts %}
+{% endblock %} {% block scripts %}
 <script>
-    // Check username availability in real time
-    document.getElementById('username').addEventListener('input', async function () {
-        const username = this.value.trim();
-        const errorElement = document.getElementById('username-error');
+  // Check username availability in real time
+  document
+    .getElementById("username")
+    .addEventListener("input", async function () {
+      const username = this.value.trim();
+      const errorElement = document.getElementById("username-error");
 
-        if (username.length > 0) {
-            try {
-                const response = await fetch(`/auth/check-username?username=${encodeURIComponent(username)}`);
-                const data = await response.json();
-                if (data.exists) {
-                    errorElement.textContent = 'Username already exists';
-                } else {
-                    errorElement.textContent = '';
-                }
-            } catch (error) {
-                console.error('Username check failed:', error);
-                errorElement.textContent = '';
-            }
-        } else {
-            errorElement.textContent = '';
-        }
-    });
-
-    // Check email availability in real time
-    document.getElementById('email').addEventListener('input', async function () {
-        const email = this.value.trim();
-        const errorElement = document.getElementById('email-error');
-
-        if (email.length > 0) {
-            try {
-                const response = await fetch(`/auth/check-email?email=${encodeURIComponent(email)}`);
-                const data = await response.json();
-                if (data.exists) {
-                    errorElement.textContent = 'Email already exists';
-                } else {
-                    errorElement.textContent = '';
-                }
-            } catch (error) {
-                console.error('Email check failed:', error);
-                errorElement.textContent = '';
-            }
-        } else {
-            errorElement.textContent = '';
-        }
-    });
-
-    document.getElementById('registerForm').addEventListener('submit', async function (e) {
-        e.preventDefault();
-
-        const formData = {
-            username: document.getElementById('username').value,
-            email: document.getElementById('email').value,
-            password: document.getElementById('password').value,
-            confirm_password: document.getElementById('confirm_password').value,
-            agree: document.getElementById('agree').checked,
-            honeypot: document.getElementById('honeypot').value
-        };
-
-        // Validate password confirmation
-        if (formData.password !== formData.confirm_password) {
-            msg('Passwords do not match', "warn");
-            return;
-        }
-
-        // Validate agreement confirmation
-        if (!formData.agree) {
-            msg('Please agree to the User Agreement and Privacy Policy', "warn");
-            return;
-        }
-
-        // Check if username or email already exists
-        const usernameError = document.getElementById('username-error').textContent;
-        const emailError = document.getElementById('email-error').textContent;
-
-        if (usernameError || emailError) {
-            msg(usernameError || emailError, "warn");
-            return;
-        }
-
+      if (username.length > 0) {
         try {
-            const response = await fetch('/auth/register', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    username: formData.username,
-                    email: formData.email,
-                    password: formData.password,
-                    honeypot: formData.honeypot
-                })
-            });
-
-            if (response.ok) {
-                // Redirect to email verification page
-                window.location.href = `/account/authemail?email=${encodeURIComponent(formData.email)}`;
-            } else {
-                const error = await response.json();
-                msg(error.detail || 'Registration failed');
-            }
+          const response = await fetch(
+            `/auth/check-username?username=${encodeURIComponent(username)}`,
+          );
+          const data = await response.json();
+          if (data.exists) {
+            errorElement.textContent = "Username already exists";
+          } else {
+            errorElement.textContent = "";
+          }
         } catch (error) {
-            console.error('Registration failed:', error);
-            msg('Registration failed, please try again later', 'warn');
+          console.error("Username check failed:", error);
+          errorElement.textContent = "";
         }
+      } else {
+        errorElement.textContent = "";
+      }
+    });
+
+  // Check email availability in real time
+  document.getElementById("email").addEventListener("input", async function () {
+    const email = this.value.trim();
+    const errorElement = document.getElementById("email-error");
+
+    if (email.length > 0) {
+      try {
+        const response = await fetch(
+          `/auth/check-email?email=${encodeURIComponent(email)}`,
+        );
+        const data = await response.json();
+        if (data.exists) {
+          errorElement.textContent = "Email already exists";
+        } else {
+          errorElement.textContent = "";
+        }
+      } catch (error) {
+        console.error("Email check failed:", error);
+        errorElement.textContent = "";
+      }
+    } else {
+      errorElement.textContent = "";
+    }
+  });
+
+  document
+    .getElementById("registerForm")
+    .addEventListener("submit", async function (e) {
+      e.preventDefault();
+
+      const formData = {
+        username: document.getElementById("username").value,
+        email: document.getElementById("email").value,
+        password: document.getElementById("password").value,
+        confirm_password: document.getElementById("confirm_password").value,
+        agree: document.getElementById("agree").checked,
+        honeypot: document.getElementById("honeypot").value,
+      };
+
+      // Validate password confirmation
+      if (formData.password !== formData.confirm_password) {
+        msg("Passwords do not match", "warn");
+        return;
+      }
+
+      // Validate agreement confirmation
+      if (!formData.agree) {
+        msg("Please agree to the User Agreement and Privacy Policy", "warn");
+        return;
+      }
+
+      // Check if username or email already exists
+      const usernameError =
+        document.getElementById("username-error").textContent;
+      const emailError = document.getElementById("email-error").textContent;
+
+      if (usernameError || emailError) {
+        msg(usernameError || emailError, "warn");
+        return;
+      }
+
+      try {
+        const response = await fetch("/auth/register", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            username: formData.username,
+            email: formData.email,
+            password: formData.password,
+            honeypot: formData.honeypot,
+          }),
+        });
+
+        if (response.ok) {
+          // Redirect to email verification page
+          window.location.href = `/account/authemail?email=${encodeURIComponent(formData.email)}`;
+        } else {
+          const error = await response.json();
+          msg(error.detail || "Registration failed");
+        }
+      } catch (error) {
+        console.error("Registration failed:", error);
+        msg("Registration failed, please try again later", "warn");
+      }
     });
 </script>
 {% endblock %}
