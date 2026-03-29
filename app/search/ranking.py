@@ -19,14 +19,22 @@ import importlib.util
 def _load_embedding_engine() -> Any:
     """Load ItemEmbeddingEngine from Cross-Modal_Finder.py using importlib."""
     try:
-        module_path = os.path.join(
-            os.path.dirname(__file__),
-            "../../model/Cross-Modal_Finder/Cross-Modal_Finder.py"
-        )
-        module_path = os.path.normpath(module_path)
-        
-        if not os.path.exists(module_path):
-            raise FileNotFoundError(f"Module not found at: {module_path}")
+        base_dir = os.path.dirname(__file__)
+        candidate_paths = [
+            os.path.normpath(os.path.join(base_dir, "../../model/Cross-Modal_Finder/Cross-Modal_Finder.py")),
+            os.path.normpath(os.path.join(base_dir, "../report/Cross-Modal_Finder.py")),
+        ]
+
+        module_path = None
+        for p in candidate_paths:
+            if os.path.exists(p):
+                module_path = p
+                break
+
+        if module_path is None:
+            raise FileNotFoundError(
+                "Cross-Modal_Finder.py not found. Checked: " + ", ".join(candidate_paths)
+            )
         
         spec = importlib.util.spec_from_file_location(
             "cross_modal_finder_module",
@@ -36,7 +44,13 @@ def _load_embedding_engine() -> Any:
             raise ImportError("Cannot load module spec")
         
         module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
+        # Python 3.13 dataclass evaluation expects the module to be present in sys.modules.
+        sys.modules[spec.name] = module
+        try:
+            spec.loader.exec_module(module)
+        except Exception:
+            sys.modules.pop(spec.name, None)
+            raise
         return module.ItemEmbeddingEngine
     except Exception as e:
         raise RuntimeError(
@@ -52,7 +66,7 @@ except RuntimeError:
 
 def calculate_fine_ranking_score(
     user_text: str,
-    user_image: Union[str, Image.Image],
+    user_image: Optional[Union[str, Image.Image]],
     item_text: str,
     item_image: Optional[Union[str, Image.Image]],
     engine: Any,
@@ -89,8 +103,14 @@ def calculate_fine_ranking_score(
     # Extract user text embedding (2D array -> 1D vector via [0])
     user_text_vec: NDArray[np.float32] = engine.encode_text_batch([user_text])[0]
 
-    # Extract user image embedding (2D array -> 1D vector via [0])
-    user_image_vec: NDArray[np.float32] = engine.encode_image_batch([user_image])[0]
+    # Extract user image embedding only when image input is available.
+    user_image_vec: Optional[NDArray[np.float32]] = None
+    has_user_image = user_image is not None and (
+        isinstance(user_image, Image.Image) or
+        (isinstance(user_image, str) and user_image.strip())
+    )
+    if has_user_image:
+        user_image_vec = engine.encode_image_batch([user_image])[0]
 
     # Extract item text embedding (2D array -> 1D vector via [0])
     item_text_vec: NDArray[np.float32] = engine.encode_text_batch([item_text])[0]
@@ -112,18 +132,77 @@ def calculate_fine_ranking_score(
     scores.append(text_text_score)
 
     # Score 2: Image-to-Text similarity (MUST apply linear mapping)
-    image_text_score: float = float(np.dot(user_image_vec, item_text_vec))
-    scaled_image_text_score: float = ItemEmbeddingEngine.scale_image_score(image_text_score)
-    scores.append(scaled_image_text_score)
+    if user_image_vec is not None:
+        image_text_score: float = float(np.dot(user_image_vec, item_text_vec))
+        scaled_image_text_score: float = ItemEmbeddingEngine.scale_image_score(image_text_score)
+        scores.append(scaled_image_text_score)
 
-    # Score 3: Image-to-Image similarity (NO linear mapping) - ONLY if item_image exists
+    # Score 3: Text-to-Image similarity (NO linear mapping) - ONLY if item_image exists
+    text_image_score: Optional[float] = None
     if item_image_vec is not None:
-        image_image_score: float = float(np.dot(user_image_vec, item_image_vec))
+        text_image_score = float(np.dot(user_text_vec, item_image_vec))
+        scores.append(text_image_score)
+
+    # Score 4: Image-to-Image similarity (NO linear mapping) - ONLY if both images exist
+    image_image_score: Optional[float] = None
+    if user_image_vec is not None and item_image_vec is not None:
+        image_image_score = float(np.dot(user_image_vec, item_image_vec))
         scores.append(image_image_score)
 
+    # Internal modality-consistency scores (used for conflict penalties only)
+    query_text_image_consistency: Optional[float] = None
+    item_text_image_consistency: Optional[float] = None
+    if user_image_vec is not None:
+        query_text_image_consistency = float(np.dot(user_text_vec, user_image_vec))
+    if item_image_vec is not None:
+        item_text_image_consistency = float(np.dot(item_text_vec, item_image_vec))
+
     # ===== Score Fusion =====
-    # Calculate arithmetic mean of all collected scores
-    final_score: float = float(np.mean(scores))
+    # Use weighted fusion to emphasize visual-channel evidence when available.
+    # - text_text + image_text + text_image + image_image: boost image_text and image_image.
+    # - text_text + image_text: boost image_text.
+    # - text_text + text_image: boost text_image.
+    # - otherwise: robust fallback to arithmetic mean over available terms.
+    has_image_text = user_image_vec is not None
+    has_text_image = item_image_vec is not None
+    has_image_image = user_image_vec is not None and item_image_vec is not None
+
+    if has_image_text and has_text_image and has_image_image:
+        final_score = float(
+            0.20 * text_text_score +
+            0.35 * scaled_image_text_score +
+            0.15 * text_image_score +
+            0.30 * image_image_score
+        )
+    elif has_image_text:
+        final_score = float(
+            0.40 * text_text_score +
+            0.60 * scaled_image_text_score
+        )
+    elif has_text_image:
+        final_score = float(
+            0.40 * text_text_score +
+            0.60 * text_image_score
+        )
+    else:
+        final_score = float(np.mean(scores))
+
+    # Penalize conflicts where text-based similarity is high but visual evidence is weak,
+    # and where query/item each has poor internal text-image consistency.
+    penalty = 0.0
+
+    if has_image_text and has_image_image:
+        dominant_text_signal = max(text_text_score, scaled_image_text_score)
+        if image_image_score + 0.10 < dominant_text_signal:
+            penalty += min(0.35, (dominant_text_signal - image_image_score - 0.10) * 0.90)
+
+    if item_text_image_consistency is not None and item_text_image_consistency < 0.20:
+        penalty += min(0.25, (0.20 - item_text_image_consistency) * 0.85)
+
+    if query_text_image_consistency is not None and query_text_image_consistency < 0.15:
+        penalty += min(0.15, (0.15 - query_text_image_consistency) * 0.80)
+
+    final_score = float(max(0.0, min(1.0, final_score - penalty)))
 
     # Ensure return type is standard Python float (not numpy.float32) for JSON compatibility
     return float(final_score)

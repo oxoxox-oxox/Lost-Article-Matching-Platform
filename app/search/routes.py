@@ -390,10 +390,16 @@ async def search_screen(
 
     image_vector = None
     image_prompt_text = None
+    user_image_for_cmf = None
     if image:
         try:
             body = await image.read()
             image_b64 = _image_to_base64(body)
+            try:
+                with Image.open(BytesIO(body)) as pil_image:
+                    user_image_for_cmf = pil_image.convert("RGB")
+            except Exception:
+                user_image_for_cmf = None
             msg_content = [
                 {"type": "text", "text": f"User text: {text}"},
                 {"type": "text", "text": "Summarize the visible lost-item information from the image or description into a single lost-and-found text no longer than 256 characters. Include category, color, material, key distinguishing features, and scene/location. Strictly no more than 256 characters."},
@@ -425,6 +431,7 @@ async def search_screen(
             input_text_vector=text_vector,
             input_image_vector=image_vector,
             query_description=text,
+            user_image=user_image_for_cmf,
             top_n=top_n,
             coarse_top_k=coarse_top_k,
             min_coarse_score=min_coarse_score,

@@ -9,12 +9,32 @@ from PIL import Image
 
 # Import new fine-ranking function
 try:
-    from app.search.ranking import calculate_fine_ranking_score
+    from app.search.ranking import calculate_fine_ranking_score, ItemEmbeddingEngine
 except ImportError:
     calculate_fine_ranking_score = None
+    ItemEmbeddingEngine = None
 
 
 MIN_COARSE_SCORE_FOR_FINE = 0.6
+_CMF_ENGINE = None
+_CMF_ENGINE_LOAD_ERROR = None
+
+
+def _get_cmf_engine():
+    global _CMF_ENGINE_LOAD_ERROR
+    global _CMF_ENGINE
+    if _CMF_ENGINE is not None:
+        return _CMF_ENGINE
+    if ItemEmbeddingEngine is None:
+        _CMF_ENGINE_LOAD_ERROR = "ItemEmbeddingEngine import failed"
+        return None
+    try:
+        _CMF_ENGINE = ItemEmbeddingEngine()
+        _CMF_ENGINE_LOAD_ERROR = None
+        return _CMF_ENGINE
+    except Exception as e:
+        _CMF_ENGINE_LOAD_ERROR = str(e)
+        return None
 
 
 def _cosine_similarity(a: List[float], b: List[float]) -> float:
@@ -315,10 +335,10 @@ def match_search_refined(
         coarse_score = float(item.get("score", 0.0))
         llm_score = label_score.get(label, 0.5)
         if input_image_vector is None:
-            # For text-only queries, keep stronger influence from multimodal coarse score.
-            final_score = 0.85 * coarse_score + 0.15 * llm_score
-        else:
+            # Text-only query: increase LLM contribution.
             final_score = 0.7 * coarse_score + 0.3 * llm_score
+        else:
+            final_score = 0.85 * coarse_score + 0.15 * llm_score
 
         enriched = dict(item)
         enriched["refine_label"] = label
@@ -335,6 +355,7 @@ def run_two_stage_screening(
     input_text_vector: Optional[List[float]] = None,
     input_image_vector: Optional[List[float]] = None,
     query_description: Optional[str] = None,
+    user_image: Optional[Union[str, Image.Image]] = None,
     top_n: int = 10,
     coarse_top_k: int = 30,
     min_coarse_score: float = MIN_COARSE_SCORE_FOR_FINE,
@@ -357,6 +378,8 @@ def run_two_stage_screening(
         if float(item.get("score", -1.0)) >= effective_min_coarse_score
     ]
 
+    cmf_engine = _get_cmf_engine() if calculate_fine_ranking_score is not None else None
+
     summary = {
         "coarse_total": len(coarse_all),
         "coarse_pass": len(coarse_pass),
@@ -364,8 +387,20 @@ def run_two_stage_screening(
         "refine_attempted": 0,
         "refine_kept": 0,
         "refine_skipped_empty_desc": 0,
+        "cmf_engine_available": bool(cmf_engine is not None),
+        "cmf_scored_count": 0,
+        "cmf_failed_count": 0,
         "label_counts": {"yes": 0, "maybe": 0, "no": 0},
     }
+
+    if cmf_engine is None and _CMF_ENGINE_LOAD_ERROR:
+        summary["cmf_engine_error"] = _CMF_ENGINE_LOAD_ERROR
+
+    if cmf_engine is None:
+        raise RuntimeError(
+            "CMF engine unavailable for fine screening; refusing to fallback to coarse score. "
+            "Check cmf_engine_error in summary or server logs."
+        )
 
     if not query_description:
         final_matches = coarse_pass[:top_n]
@@ -399,16 +434,45 @@ def run_two_stage_screening(
         if label not in keep_labels:
             continue
 
-        coarse_score = float(item.get("score", 0.0))
+        # Fine-stage confidence now uses CMF score as the model confidence term.
+        cmf_score: Optional[float] = None
+        if cmf_engine is not None:
+            try:
+                item_id = item.get("id")
+                report = db.query(Report).filter(Report.id == item_id).first()
+                item_image = report.image if report else None
+                if item_image:
+                    candidate_image_path = os.path.join("static", item_image)
+                    item_image = candidate_image_path if os.path.exists(candidate_image_path) else None
+
+                cmf_score = float(calculate_fine_ranking_score(
+                    user_text=query_description,
+                    user_image=user_image,
+                    item_text=candidate_desc,
+                    item_image=item_image,
+                    engine=cmf_engine,
+                ))
+            except Exception:
+                cmf_score = None
+
+        if cmf_score is None:
+            summary["cmf_failed_count"] += 1
+            continue
+
+        summary["cmf_scored_count"] += 1
+
         llm_score = label_score.get(label, 0.5)
         if input_image_vector is None:
-            final_score = 0.85 * coarse_score + 0.15 * llm_score
+            final_score = 0.7 * cmf_score + 0.3 * llm_score
         else:
-            final_score = 0.7 * coarse_score + 0.3 * llm_score
+            final_score = 0.85 * cmf_score + 0.15 * llm_score
 
         enriched = dict(item)
         enriched["refine_label"] = label
         enriched["refine_output"] = raw_output
+        enriched["coarse_score"] = float(item.get("score", 0.0))
+        enriched["cmf_score"] = float(cmf_score)
+        enriched["cmf_used"] = True
         enriched["final_score"] = final_score
         refined.append(enriched)
 
