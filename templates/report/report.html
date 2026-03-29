@@ -1,266 +1,320 @@
-{% extends "index.html" %}
-
-{% block title %}Found Item Report - Lamp{% endblock %}
-
-{% block head %}
+{% extends "index.html" %} {% block title %}Found Item Report - Lamp{% endblock
+%} {% block head %}
 <style>
-    .report-form {
-        max-width: 800px;
-        margin: 0 auto;
-    }
+  .report-form {
+    max-width: 800px;
+    margin: 0 auto;
+  }
 
-    .form-group {
-        margin-bottom: 20px;
-    }
+  .form-group {
+    margin-bottom: 20px;
+  }
 
-    label {
-        display: block;
-        margin-bottom: 5px;
-        font-weight: bold;
-    }
+  label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: bold;
+  }
 
-    input[type="text"],
-    input[type="datetime-local"],
-    textarea {
-        width: 100%;
-        padding: 10px;
-        border: 1px solid #ddd;
-        border-radius: 4px;
-    }
+  input[type="text"],
+  input[type="datetime-local"],
+  textarea {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+  }
 
-    textarea {
-        resize: vertical;
-        min-height: 100px;
-    }
+  textarea {
+    resize: vertical;
+    min-height: 100px;
+  }
 
-    .file-upload {
-        border: 2px dashed #ddd;
-        border-radius: 4px;
-        padding: 20px;
-        text-align: center;
-        cursor: pointer;
-    }
+  .file-upload {
+    border: 2px dashed #ddd;
+    border-radius: 4px;
+    padding: 20px;
+    text-align: center;
+    cursor: pointer;
+  }
 
-    .file-upload:hover {
-        border-color: #3498db;
-    }
+  .file-upload:hover {
+    border-color: #3498db;
+  }
 
-    input[type="file"] {
-        display: none;
-    }
+  input[type="file"] {
+    display: none;
+  }
 
-    button {
-        background-color: #3498db;
-        color: white;
-        padding: 10px 20px;
-        border: none;
-        border-radius: 4px;
-        cursor: pointer;
-        font-size: 16px;
-    }
+  button {
+    background-color: #3498db;
+    color: white;
+    padding: 10px 20px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 16px;
+  }
 
-    button:hover {
-        background-color: #2980b9;
-    }
+  button:hover {
+    background-color: #2980b9;
+  }
 
-    .success-message {
-        background-color: #d4edda;
-        color: #155724;
-        padding: 10px;
-        border-radius: 4px;
-        margin-top: 20px;
-    }
+  .success-message {
+    background-color: #d4edda;
+    color: #155724;
+    padding: 10px;
+    border-radius: 4px;
+    margin-top: 20px;
+  }
 </style>
-{% endblock %}
-
-{% block content %}
+{% endblock %} {% block content %}
 <div class="report-form">
-    <h1>Found Item Report</h1>
-    {% if success %}
-    <div class="success-message">
-        Found item information submitted successfully!
+  <h1>Found Item Report</h1>
+  {% if success %}
+  <div class="success-message">
+    Found item information submitted successfully!
+  </div>
+  {% endif %}
+  <form
+    id="reportForm"
+    action="/report/"
+    method="post"
+    enctype="multipart/form-data"
+  >
+    <div class="form-group">
+      <label for="image">Upload Image <span style="color: red">*</span></label>
+      <div
+        class="file-upload"
+        onclick="document.getElementById('image').click()"
+      >
+        <p>Click or drag files here to upload</p>
+        <input type="file" id="image" name="image" accept="image/*" />
+      </div>
     </div>
-    {% endif %}
-    <form id="reportForm" action="/report/" method="post" enctype="multipart/form-data">
-        <div class="form-group">
-            <label for="image">Upload Image <span style="color: red;">*</span></label>
-            <div class="file-upload" onclick="document.getElementById('image').click();">
-                <p>Click or drag files here to upload</p>
-                <input type="file" id="image" name="image" accept="image/*">
-            </div>
-        </div>
-        <div class="form-group">
-            <label for="time">Discovery Time <span style="color: red;">*</span></label>
-            <input type="datetime-local" id="time" name="time" required>
-        </div>
-        <div class="form-group">
-            <label for="location">Discovery Location <span style="color: red;">*</span></label>
-            <input type="text" id="location" name="location" required
-                placeholder="Please enter the discovery location...">
-        </div>
-        <div class="form-group">
-            <label for="description">Item Description <span style="color: red;">*</span></label>
-            <textarea id="description" name="description" required
-                placeholder="Please describe the found item in detail..."></textarea>
-        </div>
-        <button type="submit" id="reportSubmitBtn">Submit Found Item</button>
-    </form>
-    <div id="reportApiResult" class="success-message" style="display:none;"></div>
+    <div class="form-group">
+      <label for="time">Discovery Date <span style="color: red">*</span></label>
+      <input
+        type="text"
+        id="time"
+        name="time"
+        placeholder="Click to select date and time"
+        onfocus="this.type = 'datetime-local'"
+        onblur="if (!this.value) this.type = 'text';"
+        required
+      />
+    </div>
+    <div class="form-group">
+      <label for="location"
+        >Discovery Location <span style="color: red">*</span></label
+      >
+      <input
+        type="text"
+        id="location"
+        name="location"
+        required
+        placeholder="Please enter the discovery location..."
+      />
+    </div>
+    <div class="form-group">
+      <label for="description"
+        >Item Description <span style="color: red">*</span></label
+      >
+      <textarea
+        id="description"
+        name="description"
+        required
+        placeholder="Please describe the found item in detail..."
+      ></textarea>
+    </div>
+    <button type="submit" id="reportSubmitBtn">Submit Found Item</button>
+  </form>
+  <div id="reportApiResult" class="success-message" style="display: none"></div>
 </div>
-{% endblock %}
-
-{% block scripts %}
+{% endblock %} {% block scripts %}
 <script>
-    const reportForm = document.getElementById('reportForm');
-    const reportSubmitBtn = document.getElementById('reportSubmitBtn');
-    const reportApiResult = document.getElementById('reportApiResult');
+  const reportForm = document.getElementById("reportForm");
+  const reportSubmitBtn = document.getElementById("reportSubmitBtn");
+  const reportApiResult = document.getElementById("reportApiResult");
 
-    function getLoginToken() {
-        return localStorage.getItem('token') || localStorage.getItem('access_token') || '';
+  function getLoginToken() {
+    return (
+      localStorage.getItem("token") ||
+      localStorage.getItem("access_token") ||
+      ""
+    );
+  }
+
+  async function ensureLoggedInOrRedirect() {
+    const token = getLoginToken();
+    if (!token) {
+      const action = await window.showAppModal({
+        title: "Login Required",
+        message: "Please log in with email first.",
+        type: "warning",
+        okText: "Go to Login",
+        cancelText: "Back to Home",
+        showCancel: true,
+      });
+      window.location.href = action === "ok" ? "/account/login" : "/";
+      return false;
     }
-
-    async function ensureLoggedInOrRedirect() {
-        const token = getLoginToken();
-        if (!token) {
-            const action = await window.showAppModal({
-                title: 'Login Required',
-                message: 'Please log in with email first.',
-                type: 'warning',
-                okText: 'Go to Login',
-                cancelText: 'Back to Home',
-                showCancel: true
-            });
-            window.location.href = action === 'ok' ? '/account/login' : '/';
-            return false;
-        }
-        try {
-            const resp = await fetch('/auth/me', {
-                method: 'GET',
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-            if (!resp.ok) {
-                const action = await window.showAppModal({
-                    title: 'Login Required',
-                    message: 'Please log in with email first.',
-                    type: 'warning',
-                    okText: 'Go to Login',
-                    cancelText: 'Back to Home',
-                    showCancel: true
-                });
-                window.location.href = action === 'ok' ? '/account/login' : '/';
-                return false;
-            }
-            return true;
-        } catch (e) {
-            const action = await window.showAppModal({
-                title: 'Login Required',
-                message: 'Please log in with email first.',
-                type: 'warning',
-                okText: 'Go to Login',
-                cancelText: 'Back to Home',
-                showCancel: true
-            });
-            window.location.href = action === 'ok' ? '/account/login' : '/';
-            return false;
-        }
+    try {
+      const resp = await fetch("/auth/me", {
+        method: "GET",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!resp.ok) {
+        const action = await window.showAppModal({
+          title: "Login Required",
+          message: "Please log in with email first.",
+          type: "warning",
+          okText: "Go to Login",
+          cancelText: "Back to Home",
+          showCancel: true,
+        });
+        window.location.href = action === "ok" ? "/account/login" : "/";
+        return false;
+      }
+      return true;
+    } catch (e) {
+      const action = await window.showAppModal({
+        title: "Login Required",
+        message: "Please log in with email first.",
+        type: "warning",
+        okText: "Go to Login",
+        cancelText: "Back to Home",
+        showCancel: true,
+      });
+      window.location.href = action === "ok" ? "/account/login" : "/";
+      return false;
     }
+  }
 
-    ensureLoggedInOrRedirect();
+  ensureLoggedInOrRedirect();
 
-    document.getElementById('image').addEventListener('change', function (e) {
-        const file = e.target.files[0];
-        if (file) {
-            const uploadArea = document.querySelector('.file-upload p');
-            uploadArea.textContent = `Selected file: ${file.name}`;
-        }
+  document.getElementById("image").addEventListener("change", function (e) {
+    const file = e.target.files[0];
+    if (file) {
+      const uploadArea = document.querySelector(".file-upload p");
+      uploadArea.textContent = `Selected file: ${file.name}`;
+    }
+  });
+
+  // When user clicks the date input, open the native date picker immediately (where supported).
+  const timeInput = document.getElementById("time");
+  if (timeInput) {
+    // Clear any default value/hint and ensure empty display.
+    try {
+      timeInput.value = "";
+    } catch (e) {}
+
+    timeInput.setAttribute("placeholder", "");
+
+    timeInput.addEventListener("focus", function (e) {
+      try {
+        e.target.value = "";
+      } catch (err) {}
+      if (typeof e.target.showPicker === "function") {
+        e.target.showPicker();
+      } else {
+        e.target.focus();
+      }
     });
+  }
 
-    function showReportResult(message, isError = false) {
-        reportApiResult.style.display = 'block';
-        reportApiResult.textContent = message;
-        if (isError) {
-            reportApiResult.style.backgroundColor = '#fee2e2';
-            reportApiResult.style.color = '#991b1b';
-            reportApiResult.style.border = '1px solid #fecaca';
-        } else {
-            reportApiResult.style.backgroundColor = '#d4edda';
-            reportApiResult.style.color = '#155724';
-            reportApiResult.style.border = 'none';
-        }
+  function showReportResult(message, isError = false) {
+    reportApiResult.style.display = "block";
+    reportApiResult.textContent = message;
+    if (isError) {
+      reportApiResult.style.backgroundColor = "#fee2e2";
+      reportApiResult.style.color = "#991b1b";
+      reportApiResult.style.border = "1px solid #fecaca";
+    } else {
+      reportApiResult.style.backgroundColor = "#d4edda";
+      reportApiResult.style.color = "#155724";
+      reportApiResult.style.border = "none";
+    }
+  }
+
+  reportForm.addEventListener("submit", async function (e) {
+    e.preventDefault();
+
+    const description = document.getElementById("description").value.trim();
+    const location = document.getElementById("location").value.trim();
+    const time = document.getElementById("time").value;
+    const imageFile = document.getElementById("image").files[0] || null;
+
+    const loggedIn = await ensureLoggedInOrRedirect();
+    if (!loggedIn) {
+      return;
     }
 
-    reportForm.addEventListener('submit', async function (e) {
-        e.preventDefault();
+    if (!description) {
+      showReportResult("Description is required.", true);
+      return;
+    }
 
-        const description = document.getElementById('description').value.trim();
-        const location = document.getElementById('location').value.trim();
-        const time = document.getElementById('time').value;
-        const imageFile = document.getElementById('image').files[0] || null;
+    // Include location/date in the text payload to keep context for embedding.
+    const composedText = [
+      description,
+      location ? `Location: ${location}` : "",
+      time ? `Date: ${time}` : "",
+    ]
+      .filter(Boolean)
+      .join(" | ");
 
-        const loggedIn = await ensureLoggedInOrRedirect();
-        if (!loggedIn) {
-            return;
+    reportSubmitBtn.disabled = true;
+    reportSubmitBtn.textContent = "Submitting...";
+
+    try {
+      const outputs = [];
+
+      const textForm = new FormData();
+      textForm.append("text", composedText);
+      const textResp = await fetch("/report/embed_text", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${getLoginToken()}` },
+        body: textForm,
+      });
+      if (!textResp.ok) {
+        const err = await textResp.json().catch(() => ({}));
+        throw new Error(err.detail || "Text API request failed");
+      }
+      const textData = await textResp.json();
+      const reportId = textData.id;
+      outputs.push(
+        `Text saved in report #${reportId}, vector_len=${textData.vector_len}.`,
+      );
+
+      if (imageFile) {
+        const imageForm = new FormData();
+        imageForm.append("image", imageFile);
+        imageForm.append("description", composedText);
+        imageForm.append("report_id", String(reportId));
+
+        const imageResp = await fetch("/report/embed_image", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${getLoginToken()}` },
+          body: imageForm,
+        });
+        if (!imageResp.ok) {
+          const err = await imageResp.json().catch(() => ({}));
+          throw new Error(err.detail || "Image API request failed");
         }
+        const imageData = await imageResp.json();
+        outputs.push(
+          `Image updated in report #${imageData.id}, vector_len=${imageData.vector_len}.`,
+        );
+      }
 
-        if (!description) {
-            showReportResult('Description is required.', true);
-            return;
-        }
-
-        // Include location/time in the text payload to keep context for embedding.
-        const composedText = [
-            description,
-            location ? `Location: ${location}` : '',
-            time ? `Time: ${time}` : ''
-        ].filter(Boolean).join(' | ');
-
-        reportSubmitBtn.disabled = true;
-        reportSubmitBtn.textContent = 'Submitting...';
-
-        try {
-            const outputs = [];
-
-            const textForm = new FormData();
-            textForm.append('text', composedText);
-            const textResp = await fetch('/report/embed_text', {
-                method: 'POST',
-                headers: { 'Authorization': `Bearer ${getLoginToken()}` },
-                body: textForm
-            });
-            if (!textResp.ok) {
-                const err = await textResp.json().catch(() => ({}));
-                throw new Error(err.detail || 'Text API request failed');
-            }
-            const textData = await textResp.json();
-            const reportId = textData.id;
-            outputs.push(`Text saved in report #${reportId}, vector_len=${textData.vector_len}.`);
-
-            if (imageFile) {
-                const imageForm = new FormData();
-                imageForm.append('image', imageFile);
-                imageForm.append('description', composedText);
-                imageForm.append('report_id', String(reportId));
-
-                const imageResp = await fetch('/report/embed_image', {
-                    method: 'POST',
-                    headers: { 'Authorization': `Bearer ${getLoginToken()}` },
-                    body: imageForm
-                });
-                if (!imageResp.ok) {
-                    const err = await imageResp.json().catch(() => ({}));
-                    throw new Error(err.detail || 'Image API request failed');
-                }
-                const imageData = await imageResp.json();
-                outputs.push(`Image updated in report #${imageData.id}, vector_len=${imageData.vector_len}.`);
-            }
-
-            showReportResult(outputs.join(' '));
-        } catch (error) {
-            showReportResult(error.message || 'Submit failed', true);
-        } finally {
-            reportSubmitBtn.disabled = false;
-            reportSubmitBtn.textContent = 'Submit Found Item';
-        }
-    });
+      showReportResult(outputs.join(" "));
+    } catch (error) {
+      showReportResult(error.message || "Submit failed", true);
+    } finally {
+      reportSubmitBtn.disabled = false;
+      reportSubmitBtn.textContent = "Submit Found Item";
+    }
+  });
 </script>
 {% endblock %}
