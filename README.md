@@ -2,20 +2,36 @@
 
 LAMP is a campus lost-and-found platform that helps connect item finders and owners quickly. It combines text and image understanding to improve match quality and sends automatic notifications when high-confidence matches are detected.
 
-![image](logo.jpg)
+[![logo](https://s41.ax1x.com/2026/03/29/pe1R1BV.png)](https://imgchr.com/i/pe1R1BV)
 
-## Key Features
+## Key advantages and innovation
 
-- User accounts: registration, verification code flow, login, and profile page
-- Reporting flow: submit found-item information with text and image features
-- Search assistant: chat-style search with conversation history and image upload
-- Multimodal matching: text and image vectors with two-stage filtering (coarse and refine)
-- Email alerts: automatic notifications for potential high-confidence matches
-- Web UI: Jinja2 templates with consistent modal and dialog interactions
+- **Multimodal matching**: text and image vectors with two-stage filtering
+  - Add the guiding words and encode them as feature vectors, use cosine similarity for quick filtering
+  - The image is encoded and aligned with the text to determine the cosine similarity
+  - Use large language models to extract features for judgment
+- **Search assistant**: chat-style search with conversation history and image upload
+  - Guide users to provide more content details to increase the success rate of matching
+  - More suitable for use and more flexible in handling input
+- **Reporting and requet flow**: submit found-item information with text and image features
+  - This simplification not only facilitates the owner in locating their lost item but also lowers the barrier for those who wish to assist by returning lost property
+  - Automatically categorizes found items based on submitted features, reducing manual sorting costs and accelerating the matching process between finders and owners
+- **Email alerts**: automatic notifications for potential high-confidence matches
+  - The alert email includes key matching information and a direct link to the platform for quick viewing and further operation
+  - Ensure the security of account verification
+- **User accounts**: registration, verification code flow, login, and profile page
+- **Security**: Use frequency limits to prevent frequent requests and honeypot functions to prevent robots
+- **Web UI**: Jinja2 templates with consistent modal and dialog interactions
+
+### Work Flow
+
+[![work flow](https://s41.ax1x.com/2026/03/29/pe1Ru1s.md.png)](https://imgchr.com/i/pe1Ru1s)
+
+### Core Algorithm
+
+[![core algorithm](https://s41.ax1x.com/2026/03/29/pe1RKcn.md.png)](https://imgchr.com/i/pe1RKcn)
 
 ## How Fine Screening Works
-
-We use a two-stage matching pipeline to keep retrieval efficient while improving precision.
 
 ### 1. Coarse screening
 
@@ -26,8 +42,8 @@ We use a two-stage matching pipeline to keep retrieval efficient while improving
 
 - We run fine screening only on top candidates from stage one.
 - Depending on the endpoint, refinement is done in one of two ways:
-  - LLM-based semantic judgment: the model labels each pair as yes, maybe, or no.
-  - Multimodal fine ranking: we combine text-to-text, image-to-text (with calibrated scaling), and image-to-image similarity.
+  - LLM-based semantic judgment: the model labels each pair
+  - Multimodal fine ranking: we combine text-to-text, image-to-text, and image-to-image similarity
 
 Final score fusion
 
@@ -83,7 +99,6 @@ Output and ranking
 - `/account/*`: Account-related pages (login, register, profile)
 - `/report/*`: Found-item reporting and vector persistence
 - `/search/*`: Search page, chat search, and two-stage filtering
-- `/ai/chat`: AI chat page and API endpoint
 
 ## Requirements
 
@@ -143,10 +158,10 @@ MATCH_NOTIFY_THRESHOLD=0.80
 ### 5. Start the application
 
 ```bash
-uvicorn main:app --reload --host 0.0.0.0 --port 8000
+uvicorn main:app --reload --host 0.0.0.0
 ```
 
-Then open <http://127.0.0.1:8000/>.
+Then open <http://127.0.0.1/>.
 
 ## Docker Deployment
 
