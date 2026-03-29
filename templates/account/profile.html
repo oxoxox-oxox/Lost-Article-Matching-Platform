@@ -36,10 +36,6 @@ head %}
           <span class="value">{{ user.email }}</span>
         </div>
         <div class="info-item">
-          <span class="label">Points:</span>
-          <span class="value">{{ user.point }}</span>
-        </div>
-        <div class="info-item">
           <span class="label">Status:</span>
           <span class="value {{ 'active' if user.is_active else 'inactive' }}"
             >{{ 'Active' if user.is_active else 'Inactive' }}</span
@@ -101,10 +97,6 @@ head %}
                       <div class="info-item">
                         <span class="label">Email:</span>
                         <span class="value">${user.email}</span>
-                      </div>
-                      <div class="info-item">
-                        <span class="label">Points:</span>
-                        <span class="value">${user.point || 0}</span>
                       </div>
                       <div class="info-item">
                         <span class="label">Status:</span>
