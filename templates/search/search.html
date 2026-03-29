@@ -652,7 +652,11 @@
             return;
         }
 
-        window.showAppModal({
+        // Bind jump actions before showing modal
+        bindOutcomeModalJumpActions();
+
+        // Show modal and wait for user action
+        const result = await window.showAppModal({
             title: outcome.title,
             html: outcome.html,
             type: outcome.type,
@@ -660,7 +664,11 @@
             okClass: 'app-modal-btn-secondary',
             showCancel: false
         });
-        bindOutcomeModalJumpActions();
+
+        // If user clicked "Close" button (not navigated away), refresh the page
+        if (result === 'ok') {
+            window.location.reload();
+        }
     }
 
     async function sendMessage() {
