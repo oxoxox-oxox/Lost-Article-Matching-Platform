@@ -32,6 +32,7 @@ def _fuse_multimodal_score(
     image_image: float,
     text_image: float,
     image_text: float,
+    query_has_image: bool,
 ) -> float:
     direct_scores = []
     cross_scores = []
@@ -52,20 +53,73 @@ def _fuse_multimodal_score(
     has_text_text = "text_text" in direct_map
     has_image_image = "image_image" in direct_map
 
-    if has_text_text and has_image_image:
-        score = 0.6 * direct_map["text_text"] + 0.4 * direct_map["image_image"]
-        gap = abs(direct_map["text_text"] - direct_map["image_image"])
-        if gap > 0.15:
-            score -= min(0.35, (gap - 0.15) * 1.2)
-    elif has_text_text:
-        score = direct_map["text_text"]
-    elif has_image_image:
-        score = direct_map["image_image"]
-    else:
-        score = max(cross_scores)
+    if query_has_image:
+        if has_text_text and has_image_image:
+            score = 0.6 * direct_map["text_text"] + \
+                0.4 * direct_map["image_image"]
+            gap = abs(direct_map["text_text"] - direct_map["image_image"])
+            if gap > 0.15:
+                score -= min(0.35, (gap - 0.15) * 1.2)
+        elif has_text_text:
+            score = direct_map["text_text"]
+        elif has_image_image:
+            score = direct_map["image_image"]
+        else:
+            score = max(cross_scores)
 
-    if cross_scores:
-        score = 0.9 * score + 0.1 * max(cross_scores)
+        if cross_scores:
+            score = 0.9 * score + 0.1 * max(cross_scores)
+    else:
+        # Text-only query: rely much more on query-text vs candidate-image agreement.
+        if has_text_text and text_image >= 0:
+            score = 0.55 * direct_map["text_text"] + 0.45 * text_image
+            gap = abs(direct_map["text_text"] - text_image)
+            if gap > 0.12:
+                score -= min(0.45, (gap - 0.12) * 1.5)
+            if text_image < 0.18:
+                score -= min(0.20, (0.18 - text_image) * 1.0)
+        elif has_text_text:
+            # Candidate has no image vector evidence.
+            score = 0.9 * direct_map["text_text"]
+        elif text_image >= 0:
+            score = text_image
+        elif has_image_image:
+            score = direct_map["image_image"]
+        else:
+            score = max(cross_scores)
+
+    return float(max(0.0, min(1.0, score)))
+
+
+def _apply_self_consistency_penalty(
+    score: float,
+    query_has_image: bool,
+    db_text: Optional[List[float]],
+    db_img: Optional[List[float]],
+) -> float:
+    """Penalize candidates with inconsistent internal text-image features.
+
+    This mainly targets text-only queries where a wrong image can otherwise hide
+    behind a strong text-text match.
+    """
+    if score < 0:
+        return score
+
+    # When query has an image, cross-check already has enough visual evidence.
+    if query_has_image:
+        return score
+
+    if db_text is None or db_img is None:
+        return score
+
+    self_consistency = _cosine_similarity(db_text, db_img)
+    if self_consistency < 0:
+        return score
+
+    # Stronger penalty for clear text-image conflicts in the same candidate.
+    if self_consistency < 0.28:
+        penalty = min(0.55, (0.28 - self_consistency) * 1.8)
+        score -= penalty
 
     return float(max(0.0, min(1.0, score)))
 
@@ -113,6 +167,14 @@ def match_search(
             image_image=image_image,
             text_image=text_image,
             image_text=image_text,
+            query_has_image=(input_image_vector is not None),
+        )
+
+        best = _apply_self_consistency_penalty(
+            score=best,
+            query_has_image=(input_image_vector is not None),
+            db_text=db_text,
+            db_img=db_img,
         )
 
         if text_text >= 0:
@@ -245,7 +307,11 @@ def match_search_refined(
 
         coarse_score = float(item.get("score", 0.0))
         llm_score = label_score.get(label, 0.5)
-        final_score = 0.7 * coarse_score + 0.3 * llm_score
+        if input_image_vector is None:
+            # For text-only queries, keep stronger influence from multimodal coarse score.
+            final_score = 0.85 * coarse_score + 0.15 * llm_score
+        else:
+            final_score = 0.7 * coarse_score + 0.3 * llm_score
 
         enriched = dict(item)
         enriched["refine_label"] = label
@@ -326,7 +392,10 @@ def run_two_stage_screening(
 
         coarse_score = float(item.get("score", 0.0))
         llm_score = label_score.get(label, 0.5)
-        final_score = 0.7 * coarse_score + 0.3 * llm_score
+        if input_image_vector is None:
+            final_score = 0.85 * coarse_score + 0.15 * llm_score
+        else:
+            final_score = 0.7 * coarse_score + 0.3 * llm_score
 
         enriched = dict(item)
         enriched["refine_label"] = label
