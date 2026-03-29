@@ -10,10 +10,34 @@
     background: #fff;
   }
 
+  .match-title {
+    margin: 4px 0 14px;
+    text-align: center;
+    font-size: clamp(30px, 5vw, 44px);
+    font-weight: 900;
+    line-height: 1.12;
+    letter-spacing: 0.02em;
+    color: #0f172a;
+    text-transform: uppercase;
+    text-shadow: 0 2px 10px rgba(15, 23, 42, 0.12);
+  }
+
+  .match-image-wrap {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin: 14px 0 18px;
+  }
+
   .match-image {
-    max-width: 100%;
+    width: min(100%, 520px);
+    max-height: 420px;
     height: auto;
+    object-fit: contain;
+    display: block;
     border-radius: 6px;
+    border: 1px solid #dbe5f1;
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.16);
   }
 
   .match-actions {
@@ -51,9 +75,9 @@
 </style>
 {% endblock %} {% block content %}
 <div class="match-card">
-  <h2>Possible Match</h2>
+  <h2 class="match-title">Possible Match</h2>
   {% if report.image_data %}
-  <div>
+  <div class="match-image-wrap">
     <img class="match-image" src="/search/match/image/{{ token }}" alt="Candidate image" />
   </div>
   {% endif %}
