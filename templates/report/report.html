@@ -268,8 +268,6 @@
     reportSubmitBtn.textContent = "Submitting...";
 
     try {
-      const outputs = [];
-
       const textForm = new FormData();
       textForm.append("text", composedText);
       const textResp = await fetch("/report/embed_text", {
@@ -283,9 +281,6 @@
       }
       const textData = await textResp.json();
       const reportId = textData.id;
-      outputs.push(
-        `Text saved in report #${reportId}, vector_len=${textData.vector_len}.`,
-      );
 
       if (imageFile) {
         const imageForm = new FormData();
@@ -302,15 +297,24 @@
           const err = await imageResp.json().catch(() => ({}));
           throw new Error(err.detail || "Image API request failed");
         }
-        const imageData = await imageResp.json();
-        outputs.push(
-          `Image updated in report #${imageData.id}, vector_len=${imageData.vector_len}.`,
-        );
+        await imageResp.json();
       }
 
-      showReportResult(outputs.join(" "));
+      showReportResult("Upload successful. We will notify users if a likely match is found.");
+      reportForm.reset();
+      const uploadArea = document.querySelector(".file-upload p");
+      if (uploadArea) {
+        uploadArea.textContent = "Click or drag files here to upload";
+      }
+      setTimeout(() => {
+        window.location.href = "/";
+      }, 1200);
     } catch (error) {
-      showReportResult(error.message || "Submit failed", true);
+      const rawMsg = error && error.message ? String(error.message) : "Submit failed";
+      const friendlyMsg = /api|embedding|vector|zhipu|trace|error:/i.test(rawMsg)
+        ? "Submit failed. Please try again later."
+        : rawMsg;
+      showReportResult(friendlyMsg, true);
     } finally {
       reportSubmitBtn.disabled = false;
       reportSubmitBtn.textContent = "Submit Found Item";
