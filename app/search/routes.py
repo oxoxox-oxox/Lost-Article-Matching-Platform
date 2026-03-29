@@ -572,6 +572,11 @@ async def match_confirm(
 
     if str(confirm).lower() in ("yes", "y", "true", "1"):
         try:
+            if record.user_id:
+                reporter = db.query(User).filter(
+                    User.id == record.user_id).first()
+                if reporter:
+                    reporter.point = (reporter.point or 0) + 2
             db.delete(record)
             db.commit()
         except Exception as e:

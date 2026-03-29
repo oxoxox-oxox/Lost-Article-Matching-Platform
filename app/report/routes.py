@@ -125,6 +125,11 @@ def _notify_best_request_match(db: Session, report_row: Report, threshold: float
 
     # Mark as processed to avoid repeated notifications for the same report.
     if sent:
+        if report_row.user_id:
+            reporter = db.query(User).filter(
+                User.id == report_row.user_id).first()
+            if reporter:
+                reporter.point = (reporter.point or 0) + 2
         report_row.status = True
         db.commit()
         return {
@@ -312,6 +317,7 @@ async def report_embed_image(
                 features_img=json.dumps(vector),
             )
             db.add(record)
+            current_user.point = (current_user.point or 0) + 1
         db.commit()
         db.refresh(record)
     except HTTPException:
@@ -368,6 +374,7 @@ async def report_embed_text(
             record = Report(user_id=current_user.id,
                             description=text, features_dis=json.dumps(vector))
             db.add(record)
+            current_user.point = (current_user.point or 0) + 1
         db.commit()
         db.refresh(record)
     except HTTPException:
