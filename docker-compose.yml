@@ -5,7 +5,7 @@ services:
       dockerfile: Dockerfile
     container_name: lamp-app
     ports:
-      - "8000:8000"
+      - "80:80"
     environment:
       DATABASE_URL: mysql+pymysql://${MYSQL_USER:-lamp}:${MYSQL_PASSWORD:-lamp_password}@db:3306/${MYSQL_DATABASE:-lamp}
       SECRET_KEY: ${SECRET_KEY:-change_this_secret_key}
