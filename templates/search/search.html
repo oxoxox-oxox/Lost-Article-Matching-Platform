@@ -631,19 +631,17 @@
     }
 
     function bindOutcomeModalJumpActions() {
-        const body = document.getElementById('appModalBody');
-        if (!body) {
-            return;
-        }
-
-        const jumpButtons = body.querySelectorAll('[data-modal-jump]');
-        jumpButtons.forEach((btn) => {
-            btn.addEventListener('click', () => {
-                const url = btn.getAttribute('data-modal-jump');
+        // Use event delegation on the modal overlay for resilience
+        const overlay = document.getElementById('appModalOverlay');
+        overlay.addEventListener('click', (e) => {
+            const jumpBtn = e.target.closest('[data-modal-jump]');
+            if (jumpBtn) {
+                e.preventDefault();
+                const url = jumpBtn.getAttribute('data-modal-jump');
                 if (url) {
                     window.location.href = url;
                 }
-            }, { once: true });
+            }
         });
     }
 
@@ -652,7 +650,7 @@
             return;
         }
 
-        // Bind jump actions before showing modal
+        // Bind delegation listener once (safe to call multiple times)
         bindOutcomeModalJumpActions();
 
         // Show modal and wait for user action
@@ -698,7 +696,7 @@
             }
             form.append('top_n', '8');
             form.append('coarse_top_k', '30');
-            form.append('min_coarse_score', '0.2');
+            form.append('min_coarse_score', '0.5');
             form.append('assist_round', String(assistRound));
 
             const resp = await fetch('/search/screen', {

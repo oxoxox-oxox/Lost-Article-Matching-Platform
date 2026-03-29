@@ -248,6 +248,82 @@
   const terminalReached = {{ "true" if terminal_reached else "false" }};
   const terminalMessageFromServer = {{ (terminal_message or "")|tojson }};
 
+  function escapeHtml(text) {
+    const str = String(text ?? '');
+    return str
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  function toNumber(value, fallback = 0) {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : fallback;
+  }
+
+  function buildMatchActionButtons(matches) {
+    return matches.map((item, idx) => {
+      const id = item?.id ?? `candidate-${idx + 1}`;
+      const score = toNumber(item?.final_score ?? item?.score, 0);
+      const label = item?.refine_label ? String(item.refine_label).toUpperCase() : 'MATCH';
+      const redirectUrl = item?.success_url || '';
+
+      return `
+        <button type="button" class="modal-action-btn" data-modal-jump="${escapeHtml(redirectUrl)}">
+          Candidate #${escapeHtml(id)}
+          <span class="meta">score: ${escapeHtml(score.toFixed(2))} | label: ${escapeHtml(label)}</span>
+        </button>
+      `;
+    }).join('');
+  }
+
+  function bindOutcomeModalJumpActions() {
+    // Use event delegation on the modal overlay for resilience
+    const overlay = document.getElementById('appModalOverlay');
+    if (!overlay) {
+      return;
+    }
+    overlay.addEventListener('click', (e) => {
+      const jumpBtn = e.target.closest('[data-modal-jump]');
+      if (jumpBtn) {
+        e.preventDefault();
+        const url = jumpBtn.getAttribute('data-modal-jump');
+        if (url) {
+          window.location.href = url;
+        }
+      }
+    });
+  }
+
+  async function showMatchesModal(matches) {
+    if (!Array.isArray(matches) || matches.length === 0 || typeof window.showAppModal !== 'function') {
+      return false;
+    }
+
+    const actionButtons = buildMatchActionButtons(matches);
+    const outcomeHtml = `
+      <p class="modal-intro">We found <strong>${matches.length}</strong> candidate match(es). Choose one item below to continue.</p>
+      <div class="modal-action-grid">${actionButtons}</div>
+    `;
+
+    // Bind delegation listener
+    bindOutcomeModalJumpActions();
+
+    // Show modal
+    await window.showAppModal({
+      title: 'Potential Match Found',
+      html: outcomeHtml,
+      type: 'success',
+      okText: 'Close',
+      okClass: 'app-modal-btn-secondary',
+      showCancel: false
+    });
+
+    return true;
+  }
+
   function showError(msg) {
     resultDiv.style.display = "block";
     resultDiv.textContent = msg;
@@ -284,22 +360,6 @@
     }, 500);
   }
 
-  function buildMatchLinks(matches) {
-    if (!Array.isArray(matches) || !matches.length) {
-      return "";
-    }
-    return matches
-      .slice(0, 5)
-      .map((item, idx) => {
-        const url = item?.success_url || "";
-        const id = item?.id ?? idx + 1;
-        const score = Number(item?.final_score ?? item?.score ?? 0).toFixed(2);
-        if (!url) return "";
-        return `<a href="${url}" style="display:block;margin:6px 0;color:#1d4ed8;text-decoration:underline;">Candidate #${id} (score: ${score})</a>`;
-      })
-      .join("");
-  }
-
   if (terminalReached) {
     const formEls = failedForm.querySelectorAll("textarea, input[type='text']");
     formEls.forEach((el) => {
@@ -333,7 +393,7 @@
     screenFd.append("assist_round", assistRoundVal);
     screenFd.append("top_n", "10");
     screenFd.append("coarse_top_k", "30");
-    screenFd.append("min_coarse_score", "0.2");
+    screenFd.append("min_coarse_score", "0.5");
 
     try {
       // Step 1: re-run screening using supplemented description.
@@ -353,13 +413,11 @@
         : [];
 
       if (matches.length > 0) {
-        const linksHtml = buildMatchLinks(matches);
-        resultDiv.style.display = "block";
-        resultDiv.style.color = "#065f46";
-        resultDiv.innerHTML =
-          "Potential matches found. Please continue with one candidate:" +
-          linksHtml;
-        return;
+        // Show matches in modal popup (same as first search)
+        const modalShown = await showMatchesModal(matches);
+        if (modalShown) {
+          return;
+        }
       }
 
       // If still not matched but not terminal, jump to next assist round page.

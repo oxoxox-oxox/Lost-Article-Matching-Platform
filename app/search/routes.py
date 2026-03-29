@@ -366,7 +366,7 @@ async def search_screen(
     assist_round: int = Form(0),
     top_n: int = Form(10),
     coarse_top_k: int = Form(30),
-    min_coarse_score: float = Form(0.2),
+    min_coarse_score: float = Form(0.5),
     current_user: User = Depends(_require_auth_user),
     db: Session = Depends(get_db),
 ):
