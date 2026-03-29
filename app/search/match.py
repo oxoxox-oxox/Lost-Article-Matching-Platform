@@ -27,6 +27,49 @@ def _cosine_similarity(a: List[float], b: List[float]) -> float:
     return float(np.dot(va, vb) / denom)
 
 
+def _fuse_multimodal_score(
+    text_text: float,
+    image_image: float,
+    text_image: float,
+    image_text: float,
+) -> float:
+    direct_scores = []
+    cross_scores = []
+
+    if text_text >= 0:
+        direct_scores.append(("text_text", text_text))
+    if image_image >= 0:
+        direct_scores.append(("image_image", image_image))
+    if text_image >= 0:
+        cross_scores.append(text_image)
+    if image_text >= 0:
+        cross_scores.append(image_text)
+
+    if not direct_scores and not cross_scores:
+        return -1.0
+
+    direct_map = {k: v for k, v in direct_scores}
+    has_text_text = "text_text" in direct_map
+    has_image_image = "image_image" in direct_map
+
+    if has_text_text and has_image_image:
+        score = 0.6 * direct_map["text_text"] + 0.4 * direct_map["image_image"]
+        gap = abs(direct_map["text_text"] - direct_map["image_image"])
+        if gap > 0.15:
+            score -= min(0.35, (gap - 0.15) * 1.2)
+    elif has_text_text:
+        score = direct_map["text_text"]
+    elif has_image_image:
+        score = direct_map["image_image"]
+    else:
+        score = max(cross_scores)
+
+    if cross_scores:
+        score = 0.9 * score + 0.1 * max(cross_scores)
+
+    return float(max(0.0, min(1.0, score)))
+
+
 def match_search(
     db: Session,
     input_text_vector: Optional[List[float]] = None,
@@ -56,27 +99,30 @@ def match_search(
         except Exception:
             db_img = None
 
-        # comparisons
-        if input_text_vector is not None and db_text is not None:
-            s = _cosine_similarity(input_text_vector, db_text)
-            if s > best:
-                best = s
-                reasons = ["text->text"]
-        if input_image_vector is not None and db_img is not None:
-            s = _cosine_similarity(input_image_vector, db_img)
-            if s > best:
-                best = s
-                reasons = ["image->image"]
-        if input_text_vector is not None and db_img is not None:
-            s = _cosine_similarity(input_text_vector, db_img)
-            if s > best:
-                best = s
-                reasons = ["text->image"]
-        if input_image_vector is not None and db_text is not None:
-            s = _cosine_similarity(input_image_vector, db_text)
-            if s > best:
-                best = s
-                reasons = ["image->text"]
+        text_text = _cosine_similarity(input_text_vector, db_text) if (
+            input_text_vector is not None and db_text is not None) else -1.0
+        image_image = _cosine_similarity(input_image_vector, db_img) if (
+            input_image_vector is not None and db_img is not None) else -1.0
+        text_image = _cosine_similarity(input_text_vector, db_img) if (
+            input_text_vector is not None and db_img is not None) else -1.0
+        image_text = _cosine_similarity(input_image_vector, db_text) if (
+            input_image_vector is not None and db_text is not None) else -1.0
+
+        best = _fuse_multimodal_score(
+            text_text=text_text,
+            image_image=image_image,
+            text_image=text_image,
+            image_text=image_text,
+        )
+
+        if text_text >= 0:
+            reasons.append("text->text")
+        if image_image >= 0:
+            reasons.append("image->image")
+        if text_image >= 0:
+            reasons.append("text->image")
+        if image_text >= 0:
+            reasons.append("image->text")
 
         if best >= 0:
             results.append(

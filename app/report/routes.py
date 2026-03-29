@@ -49,13 +49,51 @@ def _best_similarity(report_row: Report, request_row: RequestModel) -> float:
     q_text = _parse_vector(request_row.features_dis)
     q_img = _parse_vector(request_row.features_img)
 
-    scores = [
-        _cosine_similarity(r_text, q_text),
-        _cosine_similarity(r_img, q_img),
-        _cosine_similarity(r_text, q_img),
-        _cosine_similarity(r_img, q_text),
-    ]
-    return max(scores)
+    text_text = _cosine_similarity(r_text, q_text)
+    image_image = _cosine_similarity(r_img, q_img)
+    text_image = _cosine_similarity(r_text, q_img)
+    image_text = _cosine_similarity(r_img, q_text)
+
+    direct_scores = []
+    cross_scores = []
+
+    if text_text >= 0:
+        direct_scores.append(("text_text", text_text))
+    if image_image >= 0:
+        direct_scores.append(("image_image", image_image))
+    if text_image >= 0:
+        cross_scores.append(text_image)
+    if image_text >= 0:
+        cross_scores.append(image_text)
+
+    if not direct_scores and not cross_scores:
+        return -1.0
+
+    direct_map = {k: v for k, v in direct_scores}
+    has_text_text = "text_text" in direct_map
+    has_image_image = "image_image" in direct_map
+
+    # Prefer direct-modality agreement: text-text is strong, image-image must also matter.
+    if has_text_text and has_image_image:
+        score = 0.6 * direct_map["text_text"] + 0.4 * direct_map["image_image"]
+
+        # Penalize contradictions between text and image channels.
+        gap = abs(direct_map["text_text"] - direct_map["image_image"])
+        if gap > 0.15:
+            score -= min(0.35, (gap - 0.15) * 1.2)
+    elif has_text_text:
+        score = direct_map["text_text"]
+    elif has_image_image:
+        score = direct_map["image_image"]
+    else:
+        # Fallback when only cross-modality comparisons are available.
+        score = max(cross_scores)
+
+    # Cross-modality is auxiliary evidence and should not dominate the final score.
+    if cross_scores:
+        score = 0.9 * score + 0.1 * max(cross_scores)
+
+    return float(max(0.0, min(1.0, score)))
 
 
 def _normalize_text_for_compare(text: str | None) -> str:
