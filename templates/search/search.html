@@ -696,7 +696,7 @@
             }
             form.append('top_n', '8');
             form.append('coarse_top_k', '30');
-            form.append('min_coarse_score', '0.5');
+            form.append('min_coarse_score', '0.6');
             form.append('assist_round', String(assistRound));
 
             const resp = await fetch('/search/screen', {

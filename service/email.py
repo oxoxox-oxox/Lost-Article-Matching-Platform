@@ -189,12 +189,12 @@ LAMP Team
                 server.send_message(msg)
         print(f"Success: Email to {email}")
         return True
-    except Exception:
-        print(f"Failed: Email to {email}")
+    except Exception as e:
+        print(f"Failed: Email to {email}, error: {e}")
         return False
 
 
-def send_match_notification_email(email, report_description, request_description, score):
+def send_match_notification_email(email, report_description, request_description, score, report_id=None):
     """Send a match-notification email when a found report likely matches a lost request."""
     if not all([SMTP_SERVER, SMTP_PORT, SMTP_USERNAME, SMTP_PASSWORD, SENDER_EMAIL]):
         raise ValueError(
@@ -208,6 +208,11 @@ def send_match_notification_email(email, report_description, request_description
     score_pct = f"{max(0.0, min(1.0, float(score))) * 100:.2f}%"
     report_desc = report_description or "(No report description)"
     request_desc = request_description or "(No request description)"
+    
+    # Generate report link
+    base_url = os.getenv("FRONTEND_BASE_URL", "http://localhost:3000").rstrip('/')
+    report_link = f"{base_url}/report/{report_id}" if report_id else None
+    report_link_html = f'<a href="{report_link}" style="display: inline-block; background-color: #3b82f6; color: white; padding: 10px 20px; border-radius: 6px; text-decoration: none; margin-top: 8px;">View Found Item</a>' if report_link else ""
 
     text = f"""Hello,
 
@@ -226,6 +231,8 @@ Please log in to LAMP and review the details.
 Best regards,
 LAMP Team
 """
+    if report_link:
+        text += f"\n\nView the found item: {report_link}"
 
     html = f"""
     <!DOCTYPE html>
@@ -308,6 +315,7 @@ LAMP Team
                 <div class="block">
                     <div class="label">Found-item report</div>
                     <div class="content">{report_desc}</div>
+                    {report_link_html}
                 </div>
 
                 <p class="footer">Please log in to LAMP and review the details.</p>
@@ -334,6 +342,6 @@ LAMP Team
                 server.send_message(msg)
         print(f"Success: Match notification to {email}")
         return True
-    except Exception:
-        print(f"Failed: Match notification to {email}")
+    except Exception as e:
+        print(f"Failed: Match notification to {email}, error: {e}")
         return False

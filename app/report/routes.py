@@ -104,9 +104,9 @@ def _normalize_text_for_compare(text: str | None) -> str:
 
 def _get_notify_threshold() -> float:
     try:
-        return float(os.getenv("MATCH_NOTIFY_THRESHOLD", "0.80"))
+        return float(os.getenv("MATCH_NOTIFY_THRESHOLD", "0.70"))
     except Exception:
-        return 0.80
+        return 0.70
 
 
 def _notify_best_request_match(db: Session, report_row: Report, threshold: float | None = None) -> dict:
@@ -159,6 +159,7 @@ def _notify_best_request_match(db: Session, report_row: Report, threshold: float
         report_description=report_row.description,
         request_description=best_req.description,
         score=best_score,
+        report_id=report_row.id,
     )
 
     # Mark as processed to avoid repeated notifications for the same report.

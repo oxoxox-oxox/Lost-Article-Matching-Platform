@@ -14,6 +14,9 @@ except ImportError:
     calculate_fine_ranking_score = None
 
 
+MIN_COARSE_SCORE_FOR_FINE = 0.6
+
+
 def _cosine_similarity(a: List[float], b: List[float]) -> float:
     if a is None or b is None:
         return -1.0
@@ -262,7 +265,7 @@ def match_search_refined(
     query_description: Optional[str] = None,
     top_n: int = 10,
     coarse_top_k: int = 30,
-    min_coarse_score: float = 0.5,
+    min_coarse_score: float = MIN_COARSE_SCORE_FOR_FINE,
     keep_labels: Tuple[str, ...] = ("yes", "maybe"),
     model: str = "glm-4-flash",
     api_key: Optional[str] = None,
@@ -279,7 +282,11 @@ def match_search_refined(
         top_n=coarse_top_k,
     )
 
-    coarse = [c for c in coarse if c.get("score", -1.0) >= min_coarse_score]
+    effective_min_coarse_score = max(MIN_COARSE_SCORE_FOR_FINE, float(min_coarse_score))
+    coarse = [
+        c for c in coarse
+        if float(c.get("score", -1.0)) >= effective_min_coarse_score
+    ]
     if not query_description:
         return coarse[:top_n]
 
@@ -330,7 +337,7 @@ def run_two_stage_screening(
     query_description: Optional[str] = None,
     top_n: int = 10,
     coarse_top_k: int = 30,
-    min_coarse_score: float = 0.5,
+    min_coarse_score: float = MIN_COARSE_SCORE_FOR_FINE,
     keep_labels: Tuple[str, ...] = ("yes", "maybe"),
     model: str = "glm-4-flash",
     api_key: Optional[str] = None,
@@ -343,15 +350,17 @@ def run_two_stage_screening(
         input_image_vector=input_image_vector,
         top_n=coarse_top_k,
     )
+    effective_min_coarse_score = max(MIN_COARSE_SCORE_FOR_FINE, float(min_coarse_score))
+
     coarse_pass = [
         item for item in coarse_all
-        if float(item.get("score", -1.0)) >= min_coarse_score
+        if float(item.get("score", -1.0)) >= effective_min_coarse_score
     ]
 
     summary = {
         "coarse_total": len(coarse_all),
         "coarse_pass": len(coarse_pass),
-        "min_coarse_score": min_coarse_score,
+        "min_coarse_score": effective_min_coarse_score,
         "refine_attempted": 0,
         "refine_kept": 0,
         "refine_skipped_empty_desc": 0,
@@ -415,7 +424,7 @@ def run_two_stage_screening_multimodal(
     user_image: Optional[Union[str, Image.Image]] = None,
     top_n: int = 10,
     coarse_top_k: int = 30,
-    min_coarse_score: float = 0.5,
+    min_coarse_score: float = MIN_COARSE_SCORE_FOR_FINE,
     input_text_vector: Optional[List[float]] = None,
     input_image_vector: Optional[List[float]] = None,
     engine=None,
@@ -457,15 +466,17 @@ def run_two_stage_screening_multimodal(
         input_image_vector=input_image_vector,
         top_n=coarse_top_k,
     )
+    effective_min_coarse_score = max(MIN_COARSE_SCORE_FOR_FINE, float(min_coarse_score))
+
     coarse_pass = [
         item for item in coarse_all
-        if float(item.get("score", -1.0)) >= min_coarse_score
+        if float(item.get("score", -1.0)) >= effective_min_coarse_score
     ]
 
     summary = {
         "coarse_total": len(coarse_all),
         "coarse_pass": len(coarse_pass),
-        "min_coarse_score": min_coarse_score,
+        "min_coarse_score": effective_min_coarse_score,
         "refine_attempted": 0,
         "refine_kept": 0,
         "fine_ranking_scores": {},

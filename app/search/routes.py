@@ -366,7 +366,7 @@ async def search_screen(
     assist_round: int = Form(0),
     top_n: int = Form(10),
     coarse_top_k: int = Form(30),
-    min_coarse_score: float = Form(0.5),
+    min_coarse_score: float = Form(0.6),
     current_user: User = Depends(_require_auth_user),
     db: Session = Depends(get_db),
 ):
@@ -649,10 +649,21 @@ async def match_failed_submit(
     safe_round = max(0, int(assist_round or 0))
     diagnostic = _decode_json_payload(diagnostic_payload)
 
+    # Ensure pending request has embeddings for future report-match notification.
+    try:
+        client = _get_client()
+        emb_resp = client.embeddings.create(
+            model="embedding-3", input=composed, dimensions=2048)
+        text_vector = emb_resp.data[0].embedding
+        text_vector_json = json.dumps(text_vector)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"embedding error: {e}")
+
     try:
         record = RequestModel(
             user_id=current_user.id,
             description=composed,
+            features_dis=text_vector_json,
             assist_round=safe_round,
             terminal_reached=False,
         )
