@@ -2,6 +2,7 @@
 
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
+import secrets
 import service.models as models, service.schemas as schemas, service.security as security
 
 def get_user_by_email(db: Session, email: str):
@@ -41,8 +42,17 @@ def verify_code(db: Session, email: str, code: str):
     user = db.query(models.User).filter(models.User.email == email).first()
     if not user:
         return None
-    
-    # 检查验证码是否正确且在有效期内
-    if user.verification_code == code and datetime.utcnow() < user.code_expires_at:
+
+    # Defensive check: avoid NoneType comparison or empty matching
+    if not user.verification_code or not user.code_expires_at:
+        return None
+
+    # Check if code has expired
+    if datetime.utcnow() >= user.code_expires_at:
+        return None
+
+    # Constant-time comparison to prevent timing attacks
+    if secrets.compare_digest(str(user.verification_code).strip(), str(code or "").strip()):
         return user
+
     return None

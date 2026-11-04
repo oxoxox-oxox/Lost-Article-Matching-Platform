@@ -1,11 +1,17 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
 from service.email import send_verification_email, generate_verification_code
-from service.antibot import check_rate_limit, check_honeypot
+from service.antibot import (
+    check_rate_limit,
+    check_honeypot,
+    verify_rate_limiter,
+    is_verify_locked,
+    record_failed_verify,
+    clear_failed_verify,
+)
 import service.database as database
 from service.schemas.user import UserCreate, UserLogin, UserResponse, Token, VerificationCodeRequest, VerifyCodeRequest
 import service.crud as crud
 from datetime import datetime, timedelta
-from fastapi import Request, Depends, HTTPException
 from service.database import get_db
 import service.models as models
 import service.schemas as schemas
@@ -62,8 +68,6 @@ def register(
         # 3. 生成验证码
         verification_code = generate_verification_code()
         code_expires_at = datetime.utcnow() + timedelta(minutes=10)
-        print(
-            f"Verification code generated: {verification_code}, expires_at: {code_expires_at}")
 
         # 4. 创建用户（未激活状态）或更新已有未激活用户
         if db_user and not db_user.is_active:
@@ -82,8 +86,6 @@ def register(
 
         # 5. 发送验证邮件
         try:
-            print(
-                f"调用send_verification_email({user.email}, {verification_code})")
             email_sent = send_verification_email(user.email, verification_code)
             if not email_sent:
                 # 邮件发送失败，回滚本次注册流程
@@ -155,17 +157,31 @@ def resend_verification_code(
 @auth_router.post("/verify-code")
 def verify_code(
     request: VerifyCodeRequest,
-    db: Session = Depends(database.get_db)
+    db: Session = Depends(database.get_db),
+    rate_limit: bool = Depends(verify_rate_limiter),
 ):
-    # 1. 验证验证码
+    # 1. 检查目标邮箱是否已被锁定（防止分布式爆破）
+    if is_verify_locked(request.email):
+        raise HTTPException(
+            status_code=429,
+            detail="Too many failed verification attempts. Please wait 10 minutes or resend a code.",
+        )
+
+    # 2. 验证验证码 (常数时间安全比对)
     user = crud.verify_code(db, email=request.email, code=request.code)
     if not user:
+        record_failed_verify(request.email)
         raise HTTPException(
-            status_code=400, detail="Verification code error or expired")
+            status_code=400, detail="Verification code error or expired"
+        )
 
-    # 2. 激活用户
+    # 3. 校验成功，清除失败记录
+    clear_failed_verify(request.email)
+
+    # 4. 激活用户
     crud.update_user_verification(
-        db, user.id, is_active=True, verification_code=None, code_expires_at=None)
+        db, user.id, is_active=True, verification_code=None, code_expires_at=None
+    )
 
     return {"message": "Account verified"}
 
