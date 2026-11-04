@@ -10,6 +10,11 @@ from passlib.context import CryptContext
 from jose import JWTError, jwt
 from dotenv import load_dotenv
 from typing import Optional
+from fastapi import Request, HTTPException, status, Depends
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from sqlalchemy.orm import Session
+from service.database import get_db
+import service.models as models
 
 load_dotenv()
 
@@ -39,10 +44,110 @@ def create_access_token(data: dict):
 
 
 def decode_access_token(token: str):
+    if not token or not isinstance(token, str):
+        return None
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         return payload
-    except JWTError:
+    except (JWTError, Exception):
+        return None
+
+
+# --- Centralized FastAPI Authentication Dependencies ---
+security_scheme = HTTPBearer(auto_error=False)
+
+
+def extract_token_from_request(
+    request: Request,
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security_scheme),
+) -> Optional[str]:
+    """Extract bearer token from Authorization header or cookie fallback."""
+    # 1. Standard Authorization: Bearer <token> (parsed by HTTPBearer)
+    if credentials and credentials.scheme.lower() == "bearer" and credentials.credentials:
+        return credentials.credentials.strip()
+
+    # 2. Tolerant manual header extraction in case proxy/client dropped standard format
+    auth_header = request.headers.get("Authorization", "").strip()
+    if auth_header:
+        parts = auth_header.split()
+        if len(parts) == 2 and parts[0].lower() == "bearer":
+            return parts[1].strip()
+        elif len(parts) == 1:
+            return parts[0].strip()
+
+    # 3. Cookie fallback (for SSR pages such as /account)
+    cookie_token = request.cookies.get("access_token") or request.cookies.get("token")
+    if cookie_token:
+        return cookie_token.strip()
+
+    return None
+
+
+def get_current_user(
+    token: Optional[str] = Depends(extract_token_from_request),
+    db: Session = Depends(get_db),
+) -> models.User:
+    """Strict authentication dependency: raises 401 if token is missing/invalid or user inactive."""
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="No access token provided",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    try:
+        payload = decode_access_token(token)
+    except Exception:
+        raise credentials_exception
+
+    if not payload:
+        raise credentials_exception
+
+    email: Optional[str] = payload.get("sub")
+    if not email:
+        raise credentials_exception
+
+    user = db.query(models.User).filter(models.User.email == email).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User account is inactive or not verified",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    return user
+
+
+def get_current_user_optional(
+    token: Optional[str] = Depends(extract_token_from_request),
+    db: Session = Depends(get_db),
+) -> Optional[models.User]:
+    """Optional authentication dependency: returns User if valid token, or None for guest."""
+    if not token:
+        return None
+
+    try:
+        payload = decode_access_token(token)
+        if not payload:
+            return None
+        email = payload.get("sub")
+        if not email:
+            return None
+        user = db.query(models.User).filter(models.User.email == email).first()
+        if not user or not user.is_active:
+            return None
+        return user
+    except Exception:
         return None
 
 

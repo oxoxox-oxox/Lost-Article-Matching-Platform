@@ -169,24 +169,8 @@ def _notify_best_request_match(db: Session, report_row: Report, threshold: float
     }
 
 
-def _require_auth_user(request: Request, db: Session = Depends(get_db)) -> User:
-    token = request.headers.get(
-        "Authorization", "").replace("Bearer ", "").strip()
-    if not token:
-        raise HTTPException(status_code=401, detail="No access token provided")
-
-    payload = security.decode_access_token(token)
-    if not payload:
-        raise HTTPException(status_code=401, detail="Invalid access token")
-
-    email = payload.get("sub")
-    if not email:
-        raise HTTPException(status_code=401, detail="Invalid access token")
-
-    user = db.query(User).filter(User.email == email).first()
-    if not user or not user.is_active:
-        raise HTTPException(status_code=401, detail="User not authenticated")
-    return user
+# Centralized authentication dependency alias
+_require_auth_user = security.get_current_user
 
 
 @report_router.get("/", response_class=HTMLResponse)

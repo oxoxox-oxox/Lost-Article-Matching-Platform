@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
+import logging
 from service.email import send_verification_email, generate_verification_code
 from service.antibot import (
     check_rate_limit,
@@ -18,6 +19,7 @@ import service.schemas as schemas
 import service.security as security
 from sqlalchemy.orm import Session
 
+logger = logging.getLogger(__name__)
 
 auth_router = APIRouter(
     prefix="/auth",
@@ -26,24 +28,14 @@ auth_router = APIRouter(
 
 
 @auth_router.get("/me", response_model=schemas.UserResponse)
-def get_current_user(
-    request: Request,
-    db: Session = Depends(get_db)
+def auth_me(
+    current_user: models.User = Depends(security.get_current_user),
 ):
-    token = request.headers.get("Authorization", "").replace("Bearer ", "")
-    if not token:
-        raise HTTPException(status_code=401, detail="No access token provided")
-    try:
-        payload = security.decode_access_token(token)
-        email = payload.get("sub")
-        if email is None:
-            raise HTTPException(status_code=401, detail="Invalid access token")
-    except:
-        raise HTTPException(status_code=401, detail="Invalid access token")
-    user = db.query(models.User).filter(models.User.email == email).first()
-    if user is None:
-        raise HTTPException(status_code=404, detail="User not found")
-    return user
+    return current_user
+
+
+# Backward compatibility alias for any callers importing get_current_user from app.auth.routes
+get_current_user = security.get_current_user
 
 
 @auth_router.post("/register", response_model=UserResponse)
@@ -53,7 +45,7 @@ def register(
     db: Session = Depends(database.get_db),
     rate_limit: bool = Depends(check_rate_limit)  # 注入限流防刷
 ):
-    print(f"User information: email={user.email}, username={user.username}")
+    logger.info("User registration attempt: email=%s, username=%s", user.email, user.username)
 
     try:
         # 1. 检查蜜罐
@@ -78,11 +70,11 @@ def register(
             db_user.is_active = False
             db.commit()
             db.refresh(db_user)
-            print(f"Unverified user updated, ID: {db_user.id}")
+            logger.info("Unverified user updated, ID: %s", db_user.id)
         else:
             db_user = crud.create_user(
                 db=db, user=user, verification_code=verification_code, code_expires_at=code_expires_at)
-            print(f"User created successfully, ID: {db_user.id}")
+            logger.info("User created successfully, ID: %s", db_user.id)
 
         # 5. 发送验证邮件
         try:
@@ -95,10 +87,11 @@ def register(
                     db.commit()
                 raise HTTPException(
                     status_code=500, detail="Email verification failed, please try again later")
+        except HTTPException:
+            raise
         except Exception as email_error:
             # 邮件发送异常，回滚本次验证码状态
-            import traceback
-            traceback.print_exc()
+            logger.error("Email verification send exception: %s", email_error, exc_info=True)
             if not db_user.is_active and db_user.verification_code == verification_code:
                 db_user.verification_code = None
                 db_user.code_expires_at = None
@@ -108,16 +101,11 @@ def register(
         return db_user
     except HTTPException:
         # 重新抛出HTTPException，保持原有行为
-        print("HTTPException")
         raise
     except Exception as e:
-        # 记录其他异常
-        print(f"Registration failed: {type(e).__name__}: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        # 回滚数据库事务
+        # 记录其他异常并回滚数据库事务
+        logger.error("Registration failed: %s: %s", type(e).__name__, e, exc_info=True)
         db.rollback()
-        # 抛出通用错误
         raise HTTPException(
             status_code=500, detail="Registration failed, please try again later")
 

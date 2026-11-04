@@ -116,41 +116,9 @@ def _cleanup_due_terminal_requests(db: Session, page_size: int = 50) -> int:
     return len(rows)
 
 
-def _require_auth_user(request: Request, db: Session = Depends(get_db)) -> User:
-    token = request.headers.get(
-        "Authorization", "").replace("Bearer ", "").strip()
-    if not token:
-        raise HTTPException(status_code=401, detail="No access token provided")
-
-    payload = security.decode_access_token(token)
-    if not payload:
-        raise HTTPException(status_code=401, detail="Invalid access token")
-
-    email = payload.get("sub")
-    if not email:
-        raise HTTPException(status_code=401, detail="Invalid access token")
-
-    user = db.query(User).filter(User.email == email).first()
-    if not user or not user.is_active:
-        raise HTTPException(status_code=401, detail="User not authenticated")
-    return user
-
-
-def _optional_auth_user(request: Request, db: Session = Depends(get_db)) -> User | None:
-    token = request.headers.get(
-        "Authorization", "").replace("Bearer ", "").strip()
-    if not token:
-        return None
-    payload = security.decode_access_token(token)
-    if not payload:
-        return None
-    email = payload.get("sub")
-    if not email:
-        return None
-    user = db.query(User).filter(User.email == email).first()
-    if not user or not user.is_active:
-        return None
-    return user
+# Centralized authentication dependency aliases
+_require_auth_user = security.get_current_user
+_optional_auth_user = security.get_current_user_optional
 
 
 # URL-Safe Cryptographic Signed Token encoding/decoding

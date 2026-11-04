@@ -1,8 +1,7 @@
-from fastapi import APIRouter, Request, Query, HTTPException, Depends
+from typing import Optional
+from fastapi import APIRouter, Request, Query, Depends
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse, RedirectResponse
-from sqlalchemy.orm import Session
-from service.database import get_db
 import service.security as security
 import service.models as models
 
@@ -15,33 +14,16 @@ templates = Jinja2Templates(directory="templates")
 
 
 @account_router.get("", response_class=HTMLResponse)
-async def account_page(request: Request, db: Session = Depends(get_db)):
-    # Get token from cookie or localStorage
-    token = request.cookies.get("token") or request.headers.get(
-        "Authorization", "").replace("Bearer ", "")
-
-    if not token:
-        # Not logged in, redirect to login page
+async def account_page(
+    request: Request,
+    current_user: Optional[models.User] = Depends(security.get_current_user_optional)
+):
+    if not current_user:
+        # Not logged in or invalid token, redirect to login page
         return RedirectResponse(url="/account/login")
 
-    try:
-        # Verify token
-        payload = security.decode_access_token(token)
-        email = payload.get("sub")
-        if email is None:
-            raise HTTPException(
-                status_code=401, detail="Invalid authentication token")
-
-        # Find user
-        user = db.query(models.User).filter(models.User.email == email).first()
-        if user is None:
-            raise HTTPException(status_code=404, detail="User not found")
-
-        # Logged in, show profile page
-        return templates.TemplateResponse(request, "account/profile.html", {"request": request, "user": user})
-    except:
-        # Invalid token, redirect to login page
-        return RedirectResponse(url="/account/login")
+    # Logged in, show profile page with current user
+    return templates.TemplateResponse(request, "account/profile.html", {"request": request, "user": current_user})
 
 
 @account_router.get("/login", response_class=HTMLResponse)
@@ -60,21 +42,12 @@ async def authemail_page(request: Request, email: str = Query(None)):
 
 
 @account_router.get("/profile", response_class=HTMLResponse)
-async def profile_page(request: Request, db: Session = Depends(get_db)):
-    # Try to read token from cookie or Authorization header; do not force redirect.
-    token = request.cookies.get("token") or request.headers.get("Authorization", "").replace("Bearer ", "")
-
-    if token:
-        try:
-            payload = security.decode_access_token(token)
-            email = payload.get("sub")
-            if email:
-                user = db.query(models.User).filter(models.User.email == email).first()
-                if user:
-                    return templates.TemplateResponse(request, "account/profile.html", {"request": request, "user": user})
-        except:
-            # Fall through to render page without server-side user
-            pass
-
-    # No valid token: render the profile page; client-side JS will call `/auth/me`.
-    return templates.TemplateResponse(request, "account/profile.html", {"request": request})
+async def profile_page(
+    request: Request,
+    current_user: Optional[models.User] = Depends(security.get_current_user_optional)
+):
+    # Render profile page with server-side user if present, or clean context for client-side `/auth/me`
+    context = {"request": request}
+    if current_user:
+        context["user"] = current_user
+    return templates.TemplateResponse(request, "account/profile.html", context)
