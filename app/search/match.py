@@ -162,7 +162,8 @@ def match_search(
     Returns top_n entries sorted by similarity desc. Each entry is dict with id and score.
     """
     results = []
-    rows = db.query(Report).all()
+    # Only match against unclaimed/pending reports (exclude already matched items)
+    rows = db.query(Report).filter(Report.status == False).all()  # noqa: E712
     for r in rows:
         best = -1.0
         reasons = []

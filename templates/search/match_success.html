@@ -142,8 +142,8 @@
     try {
       const resp = await fetch('/search/match/confirm', { method: 'POST', headers: { 'Authorization': `Bearer ${getLoginToken()}` }, body: fd });
       const data = await resp.json();
-      if (resp.ok && data.status === 'deleted') {
-        resultDiv.style.display = 'block'; resultDiv.textContent = 'Match confirmed — report removed.'; resultDiv.style.color = '#065f46';
+      if (resp.ok && (data.status === 'deleted' || data.status === 'confirmed' || data.state === 'confirmed')) {
+        resultDiv.style.display = 'block'; resultDiv.textContent = 'Match confirmed — item marked as claimed.'; resultDiv.style.color = '#065f46';
         setTimeout(() => window.location.href = '/search/', 1500);
       } else {
         resultDiv.style.display = 'block'; resultDiv.textContent = data.detail || JSON.stringify(data);

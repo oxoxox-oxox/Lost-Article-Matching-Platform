@@ -148,25 +148,19 @@ def _optional_auth_user(request: Request, db: Session = Depends(get_db)) -> User
     return user
 
 
-# Simple XOR token encoding/decoding using hex key
-_XOR_KEY_HEX = "A387ED14"
-_XOR_KEY = bytes.fromhex(_XOR_KEY_HEX)
+# URL-Safe Cryptographic Signed Token encoding/decoding
+def _encode_id_to_token(id_val: int, purpose: str = "report") -> str:
+    return security.generate_signed_token(id_val=id_val, purpose=purpose)
 
 
-def _encode_id_to_token(id_val: int) -> str:
-    b = int(id_val).to_bytes(8, "big")
-    x = bytes([b[i] ^ _XOR_KEY[i % len(_XOR_KEY)] for i in range(len(b))])
-    return x.hex()
-
-
-def _decode_token_to_id(token: str) -> int:
-    try:
-        raw = bytes.fromhex(token)
-        b = bytes([raw[i] ^ _XOR_KEY[i % len(_XOR_KEY)]
-                  for i in range(len(raw))])
-        return int.from_bytes(b, "big")
-    except Exception:
-        raise HTTPException(status_code=400, detail="invalid token")
+def _decode_token_to_id(token: str, purpose: str = "report") -> int:
+    val = security.verify_signed_token(token, expected_purpose=purpose)
+    if val is None:
+        # Fallback to verify without purpose constraint for backwards compatibility
+        val = security.verify_signed_token(token, expected_purpose=None)
+    if val is None:
+        raise HTTPException(status_code=400, detail="Invalid or expired token")
+    return val
 
 
 @search_router.get("/", response_class=HTMLResponse)
@@ -549,7 +543,7 @@ async def match_success_page(request: Request, token: str, current_user: User | 
 @search_router.get('/match/image/{token}')
 async def match_image(token: str, db: Session = Depends(get_db)):
     """Return image bytes stored in DB for a given report token."""
-    report_id = _decode_token_to_id(token)
+    report_id = _decode_token_to_id(token, purpose="report")
     record = db.query(Report).filter(Report.id == report_id).first()
     if not record:
         raise HTTPException(status_code=404, detail="report not found")
@@ -559,7 +553,11 @@ async def match_image(token: str, db: Session = Depends(get_db)):
         img_bytes = base64.b64decode(record.image_data)
     except Exception:
         raise HTTPException(status_code=500, detail="invalid image data")
-    return Response(content=img_bytes, media_type='image/jpeg')
+    return Response(
+        content=img_bytes,
+        media_type='image/jpeg',
+        headers={"Cache-Control": "private, max-age=3600"}
+    )
 
 
 @search_router.post('/match/confirm')
@@ -571,11 +569,16 @@ async def match_confirm(
     current_user: User = Depends(_require_auth_user),
     db: Session = Depends(get_db),
 ):
-    """Handle user's confirmation. If confirmed, delete the matching report from DB. If not, return a redirect URL to the failed page."""
-    report_id = _decode_token_to_id(token)
+    """Handle user's confirmation. If confirmed, mark the report as matched (soft status update). If not, return a redirect URL to the failed page."""
+    report_id = _decode_token_to_id(token, purpose="report")
     record = db.query(Report).filter(Report.id == report_id).first()
     if not record:
         raise HTTPException(status_code=404, detail="report not found")
+
+    if record.status:
+        raise HTTPException(
+            status_code=400, detail="This item has already been claimed or confirmed."
+        )
 
     if str(confirm).lower() in ("yes", "y", "true", "1"):
         try:
@@ -584,12 +587,16 @@ async def match_confirm(
                     User.id == record.user_id).first()
                 if reporter:
                     reporter.point = (reporter.point or 0) + 2
-            db.delete(record)
+
+            # Soft status update instead of physical row deletion
+            record.status = True
             db.commit()
         except Exception as e:
+            db.rollback()
             raise HTTPException(
-                status_code=500, detail=f"db delete error: {e}")
-        return JSONResponse({"status": "deleted", "id": report_id})
+                status_code=500, detail=f"db update error: {e}")
+        # Keep status: "deleted" for backwards compatibility with frontend callback, plus state: "confirmed"
+        return JSONResponse({"status": "deleted", "id": report_id, "state": "confirmed"})
 
     # not confirmed -> prefer safe next candidate URL if provided by frontend
     if isinstance(next_url, str):
