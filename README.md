@@ -75,18 +75,27 @@ Output and ranking
 |   |-- search/          # Search flow, filtering, and matching routes
 |   |-- report/          # Found-item reporting and notification routes
 |   `-- __init__.py      # Router exports
+|-- model/               # Machine learning & multimodal embedding engine
+|   |-- cross_modal_finder.py # ItemEmbeddingEngine (CLIP multimodal vectors)
+|   `-- __init__.py
 |-- service/
 |   |-- models/          # SQLAlchemy models
 |   |-- schemas/         # Pydantic schemas
 |   |-- database.py      # Database engine and session setup
 |   |-- security.py      # JWT and password helpers
 |   |-- email.py         # Email utilities
+|   |-- crud.py          # Database operations
 |   `-- antibot.py       # Anti-abuse logic
-|-- model/               # Extra model and cross-modal engine code
-|-- templates/           # Jinja2 templates
-|-- static/              # Static assets (CSS, JS, images)
+|-- scripts/             # Utility and maintenance scripts
+|   `-- reset_db.py      # Database reset script for MySQL
+|-- docs/                # Project documentation and specifications
+|   |-- LAMP_Presentation_Marp.md # Presentation slides
+|   |-- plans/           # Historical feature specifications
+|   `-- archive/         # Legacy archived modules
+|-- templates/           # Jinja2 templates (account/, ai/, report/, search/)
+|-- static/              # Static assets (CSS, JS, images, docs)
 |-- main.py              # Application entry point
-|-- reset.py             # Database reset script for MySQL
+|-- reset.py             # Root compatibility wrapper for scripts/reset_db.py
 |-- Dockerfile
 |-- docker-compose.yml
 `-- requirements.txt

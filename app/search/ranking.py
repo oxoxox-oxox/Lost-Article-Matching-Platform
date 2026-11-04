@@ -15,51 +15,10 @@ import sys
 import os
 import importlib.util
 
-# Dynamically import ItemEmbeddingEngine (handles hyphenated module name)
-def _load_embedding_engine() -> Any:
-    """Load ItemEmbeddingEngine from Cross-Modal_Finder.py using importlib."""
-    try:
-        base_dir = os.path.dirname(__file__)
-        candidate_paths = [
-            os.path.normpath(os.path.join(base_dir, "../../model/Cross-Modal_Finder/Cross-Modal_Finder.py")),
-            os.path.normpath(os.path.join(base_dir, "../report/Cross-Modal_Finder.py")),
-        ]
-
-        module_path = None
-        for p in candidate_paths:
-            if os.path.exists(p):
-                module_path = p
-                break
-
-        if module_path is None:
-            raise FileNotFoundError(
-                "Cross-Modal_Finder.py not found. Checked: " + ", ".join(candidate_paths)
-            )
-        
-        spec = importlib.util.spec_from_file_location(
-            "cross_modal_finder_module",
-            module_path
-        )
-        if spec is None or spec.loader is None:
-            raise ImportError("Cannot load module spec")
-        
-        module = importlib.util.module_from_spec(spec)
-        # Python 3.13 dataclass evaluation expects the module to be present in sys.modules.
-        sys.modules[spec.name] = module
-        try:
-            spec.loader.exec_module(module)
-        except Exception:
-            sys.modules.pop(spec.name, None)
-            raise
-        return module.ItemEmbeddingEngine
-    except Exception as e:
-        raise RuntimeError(
-            f"Failed to import ItemEmbeddingEngine from Cross-Modal_Finder.py: {e}"
-        )
-
+# Import ItemEmbeddingEngine from model package
 try:
-    ItemEmbeddingEngine = _load_embedding_engine()
-except RuntimeError:
+    from model.cross_modal_finder import ItemEmbeddingEngine
+except Exception:
     # Allow graceful degradation - the function will fail at runtime if called
     ItemEmbeddingEngine = None
 
